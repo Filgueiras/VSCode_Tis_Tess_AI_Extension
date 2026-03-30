@@ -1,0 +1,74 @@
+{
+  "name": "tess-tis",
+  "publisher": "tis-angola",
+  "displayName": "Tess Tis",
+  "description": "Assistente de código IA da TIS Angola, conectado ao agente Tess — chat interactivo com streaming e selecção de modelo LLM",
+  "version": "2.0.0",
+  "author": {
+    "name": "Marco Guimarães",
+    "url": "https://tis.ao"
+  },
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": ["AI", "Chat", "Machine Learning"],
+  "activationEvents": [
+    "onView:tess.chatView",
+    "onCommand:tess.openChatWithCode"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tess-sidebar",
+          "title": "Tess Tis",
+          "icon": "icon-activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "tess-sidebar": [
+        {
+          "type": "webview",
+          "id": "tess.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tess.openChatWithCode",
+        "title": "Tess: Chat com Código Actual"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "tess.openChatWithCode",
+          "group": "tess",
+          "when": "editorTextFocus"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Tess AI",
+      "properties": {
+        "tess.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API Key do Tess AI (obter em tess.im/dashboard/user/tokens)"
+        },
+        "tess.agentId": {
+          "type": "string",
+          "default": "",
+          "description": "ID do agente Chat do Tess (número inteiro visível no URL do agente)"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}

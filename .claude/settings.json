@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp \"c:/Developer/VS_Code_Tess_Extension/icon-activity.svg\" \"$USERPROFILE/.vscode/extensions/tess-ai.tess-ai-integration-1.0.0/icon-activity.svg\")",
+      "Bash(\"c:/Developer/VS_Code_Tess_Extension/icon-activity.svg\":*)",
+      "Read(//c/Developer/VS_Code_Tess_Extension/$USERPROFILE/.vscode/**)",
+      "Read(//c/Developer/VS_Code_Tess_Extension/$USERPROFILE/.vscode/extensions/**)",
+      "Bash(cp \"c:/Developer/VS_Code_Tess_Extension/package.json\" \"$USERPROFILE/.vscode/extensions/tis-angola.tess-tis-2.0.0/\")",
+      "Bash(cp \"c:/Developer/VS_Code_Tess_Extension/extension.js\" \"$USERPROFILE/.vscode/extensions/tis-angola.tess-tis-2.0.0/\")",
+      "Bash(cp \"c:/Developer/VS_Code_Tess_Extension/icon.png\" \"$USERPROFILE/.vscode/extensions/tis-angola.tess-tis-2.0.0/\")",
+      "Bash(cp \"c:/Developer/VS_Code_Tess_Extension/icon-activity.svg\" \"$USERPROFILE/.vscode/extensions/tis-angola.tess-tis-2.0.0/\")",
+      "Bash(python3 -:*)",
+      "Bash(find c:DeveloperVS_Code_Tess_Extension -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx \\\\\\))",
+      "Bash(grep -r \"tis-angola\\\\|tess-tis\" c:DeveloperVS_Code_Tess_Extension --include=*.json --include=*.md --include=*.js)"
+    ],
+    "additionalDirectories": [
+      "c:\\Developer\\VS_Code_Tess_Extension\\$USERPROFILE\\.vscode\\extensions\\tess-ai.tess-ai-integration-1.0.0",
+      "C:\\Developer\\VS_Code_Tess_Extension\\$USERPROFILE\\.vscode\\extensions"
+    ]
+  }
+}

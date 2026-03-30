@@ -1,0 +1,20 @@
+# Dependências
+node_modules/
+
+# Pacotes gerados (vsce package)
+*.vsix
+
+# Segredos e tokens — NUNCA versionar
+token.md
+.env
+.env.*
+
+# Configuração local do Claude Code (contém tokens e paths pessoais)
+.claude/settings.local.json
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

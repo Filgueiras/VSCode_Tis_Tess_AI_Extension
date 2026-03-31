@@ -21,9 +21,16 @@ const MODELS = [
 class TessChatViewProvider {
     _view = null;
     _abortController = null;
+    _lastEditor = null;
 
     constructor(context) {
         this._context = context;
+        // Guarda o último editor activo antes de o foco mudar para o webview
+        context.subscriptions.push(
+            vscode.window.onDidChangeActiveTextEditor(editor => {
+                if (editor) this._lastEditor = editor;
+            })
+        );
     }
 
     resolveWebviewView(webviewView) {
@@ -35,7 +42,7 @@ class TessChatViewProvider {
         };
 
         const logoUri = webviewView.webview.asWebviewUri(
-            vscode.Uri.joinPath(this._context.extensionUri, 'Icone_Tis.png')
+            vscode.Uri.joinPath(this._context.extensionUri, 'tis_nobg.svg')
         );
         webviewView.webview.html = buildHtml(logoUri);
 
@@ -43,14 +50,14 @@ class TessChatViewProvider {
             switch (msg.type) {
                 case 'send':
                     this._abortController = new AbortController();
-                    await handleSend(this._view, msg.userText, msg.model, msg.history, this._abortController.signal);
+                    await handleSend(this._view, msg.userText, msg.model, msg.history, this._abortController.signal, this._lastEditor);
                     this._abortController = null;
                     break;
                 case 'cancel':
                     if (this._abortController) this._abortController.abort();
                     break;
                 case 'getCode':
-                    this._view.webview.postMessage({ type: 'insertCode', code: getCurrentCode() });
+                    this._view.webview.postMessage({ type: 'insertCode', code: getCurrentCode(this._lastEditor) });
                     break;
                 case 'pickFile':
                     await pickWorkspaceFiles(this._view);
@@ -84,26 +91,30 @@ class TessChatViewProvider {
         const config  = vscode.workspace.getConfiguration('tess');
         const apiKey  = config.get('apiKey');
         const agentId = config.get('agentId');
+        if (!apiKey || !agentId) {
+            if (this._view) this._view.webview.postMessage({ type: 'notConfigured' });
+            return;
+        }
         if (this._view) syncAgentConfig(this._view, apiKey, agentId);
     }
 
     insertCode() {
         if (!this._view) return;
-        this._view.webview.postMessage({ type: 'insertCode', code: getCurrentCode() });
+        this._view.webview.postMessage({ type: 'insertCode', code: getCurrentCode(this._lastEditor) });
         this._view.show(true);
     }
 }
 
 // ─── Código do editor ──────────────────────────────────────────────────────────
 
-function getCurrentCode() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return null;
-    const selection = editor.selection;
+function getCurrentCode(editor) {
+    const ed = editor ?? vscode.window.activeTextEditor;
+    if (!ed) return null;
+    const selection = ed.selection;
     const code = selection.isEmpty
-        ? editor.document.getText()
-        : editor.document.getText(selection);
-    return { code, language: editor.document.languageId };
+        ? ed.document.getText()
+        : ed.document.getText(selection);
+    return { code, language: ed.document.languageId };
 }
 
 // ─── Árvore do workspace ───────────────────────────────────────────────────────
@@ -218,7 +229,7 @@ async function readErrorBody(data) {
     return body.message || body.error || body.detail || null;
 }
 
-async function handleSend(view, userText, model, history, signal) {
+async function handleSend(view, userText, model, history, signal, lastEditor) {
     const config  = vscode.workspace.getConfiguration('tess');
     const apiKey  = config.get('apiKey');
     const agentId = config.get('agentId');
@@ -233,7 +244,7 @@ async function handleSend(view, userText, model, history, signal) {
     }
 
     // Inclui automaticamente o código do editor activo como contexto
-    const codeInfo = getCurrentCode();
+    const codeInfo = getCurrentCode(lastEditor);
     let fullUserText = userText;
     if (codeInfo) {
         fullUserText = `${userText}\n\n\`\`\`${codeInfo.language}\n${codeInfo.code}\n\`\`\``;
@@ -579,6 +590,7 @@ function buildHtml(logoUri) {
   let assistantBubble = null;
   let waiting = false;
   let actualTokens = null;
+  let configured = false;
 
   // ── Medidor de contexto ──────────────────────────────────────────────────────
 
@@ -610,6 +622,7 @@ function buildHtml(logoUri) {
   // ── Envio de mensagem ────────────────────────────────────────────────────────
 
   function send() {
+    if (!configured) return;
     if (waiting) { vscode.postMessage({ type: 'cancel' }); return; }
     const text = inputEl.value.trim();
     if (!text) return;
@@ -783,7 +796,23 @@ function buildHtml(logoUri) {
           inputEl.focus();
         }
         break;
+      case 'notConfigured':
+        configured = false;
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+        codeBtn.disabled = true;
+        { const emptyEl = document.getElementById('empty');
+          if (emptyEl) emptyEl.innerHTML = 'Configure a sua ligação à Tess antes de continuar.<br><small>Ctrl+, → pesquise <strong>tess</strong> → preencha <em>API Key</em> e <em>Agent ID</em></small>'; }
+        break;
       case 'setModels':
+        if (!configured) {
+          configured = true;
+          inputEl.disabled = false;
+          sendBtn.disabled = false;
+          codeBtn.disabled = false;
+          const emptyEl = document.getElementById('empty');
+          if (emptyEl) emptyEl.innerHTML = 'Olá! Como posso ajudar?<br><small>O código do editor activo é incluído automaticamente.</small>';
+        }
         if (data.models === null) {
           // Agente com modelo fixo — esconde o selector
           modelRowEl.classList.add('hidden');
@@ -825,6 +854,10 @@ function activate(context) {
         vscode.commands.registerCommand('tess.openChatWithCode', () => {
             vscode.commands.executeCommand('tess.chatView.focus');
             setTimeout(() => provider.insertCode(), 300);
+        }),
+
+        vscode.commands.registerCommand('tess.openSettings', () => {
+            vscode.commands.executeCommand('workbench.action.openSettings', 'tess');
         })
     );
 }

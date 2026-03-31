@@ -51,11 +51,12 @@ Aceda a [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens) e
 ### 3. Configurar a extensão
 
 `Ctrl+,` → pesquise `tess`:
-
-| Definição | O que preencher |
-|---|---|
-| `tess.apiKey` | O token criado no passo 1 |
+________________________________________________________
+| Definição      | O que preencher                     |
+|----------------|-------------------------------------|
+| `tess.apiKey`  | O token criado no passo 1           |
 | `tess.agentId` | O número do URL do agente (passo 2) |
+--------------------------------------------------------
 
 Após guardar as definições, a extensão detecta automaticamente os modelos disponíveis no agente.
 
@@ -66,7 +67,7 @@ Após guardar as definições, a extensão detecta automaticamente os modelos di
 ```
 ┌─────────────────────────────────────────────────┐
 │  Tess Tis                                       │
-│  Modelo: [Claude Sonnet 4.5 ▾]       [Limpar]  │
+│  Modelo: [Claude Sonnet 4.5 ▾]       [Limpar]   │
 ├─────────────────────────────────────────────────┤
 │                                                 │
 │                      Você:                      │
@@ -83,7 +84,7 @@ Após guardar as definições, a extensão detecta automaticamente os modelos di
 │        Nesse caso retorna imediatamente...      │
 │                                                 │
 ├─────────────────────────────────────────────────┤
-│  [📁 Adicionar ficheiros]                       │
+│  [ Adicionar ficheiros ]                        │
 │  [Escreva aqui...                  ] [Enviar]   │
 │  ████████████░░░░░░░░  ~24K / 200K tok          │
 └─────────────────────────────────────────────────┘
@@ -94,15 +95,14 @@ Após guardar as definições, a extensão detecta automaticamente os modelos di
 ## Modelos suportados
 
 Os modelos disponíveis dependem da configuração do agente Tess ligado. A extensão detecta-os automaticamente. Os modelos suportados pela plataforma incluem:
-
-| Fornecedor | Modelos |
-|---|---|
-| **Tess** | Tess 5 (modelo próprio) |
-| **Anthropic** | Claude Opus, Sonnet e Haiku 4.5 |
-| **OpenAI** | GPT-4o, GPT-4.1 |
-| **Google** | Gemini 2.5 Pro, Gemini 2.0 Flash |
-
----
+____________________________________________________
+| Fornecedor    | Modelos                          |
+|---------------|----------------------------------|
+| **Tess**      | Tess 5 (modelo próprio)          |
+| **Anthropic** | Claude Opus, Sonnet e Haiku 4.5  |
+| **OpenAI**    | GPT-4o, GPT-4.1                  |
+| **Google**    | Gemini 2.5 Pro, Gemini 2.0 Flash |
+----------------------------------------------------
 
 ## Requisitos
 
@@ -114,7 +114,7 @@ Os modelos disponíveis dependem da configuração do agente Tess ligado. A exte
 
 ## Sobre a TIS Angola
 
-**TIS Angola** é uma empresa angolana de tecnologia e inovação, dedicada a levar ferramentas de desenvolvimento modernas às equipas de software em Angola e na lusofonia.
+**TIS Angola** é uma consultoria angolana de tecnologia e inovação, dedicada a levar ferramentas de desenvolvimento modernas às equipas de software em Angola e na lusofonia.
 
 Esta extensão nasceu do nosso compromisso com o **Manifesto Hypercoding** — a convicção de que a IA deve amplificar a capacidade dos programadores, não substituir o pensamento crítico. Conheça o manifesto em [hypercoding.io](https://hypercoding.io).
 

@@ -2,7 +2,7 @@
   "name": "tess-tis",
   "publisher": "tis-angola",
   "displayName": "Tess Tis",
-  "description": "Assistente de código IA da TIS Angola, conectado ao agente Tess — chat interactivo com streaming e selecção de modelo LLM",
+  "description": "Assistente de código IA da TIS Angola, conectado ao seu agente na Tess — chat interactivo com streaming e selecção de modelo LLM",
   "version": "2.0.0",
   "author": {
     "name": "Marco Guimarães",
@@ -12,7 +12,7 @@
   "engines": {
     "vscode": "^1.60.0"
   },
-  "categories": ["AI", "Chat", "Machine Learning"],
+  "categories": ["AI", "Chat", "Machine Learning","hypercoding"],
   "activationEvents": [
     "onView:tess.chatView",
     "onCommand:tess.openChatWithCode"
@@ -41,6 +41,11 @@
       {
         "command": "tess.openChatWithCode",
         "title": "Tess: Chat com Código Actual"
+      },
+      {
+        "command": "tess.openSettings",
+        "title": "Tess: Configurações",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -49,6 +54,13 @@
           "command": "tess.openChatWithCode",
           "group": "tess",
           "when": "editorTextFocus"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "tess.openSettings",
+          "when": "view == tess.chatView",
+          "group": "navigation"
         }
       ]
     },

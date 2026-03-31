@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- top-left horizontal capsule -->
+  <rect x="12" y="8"  width="34" height="17" rx="8.5" fill="#1A87EE"/>
+  <!-- top-right vertical capsule -->
+  <rect x="66" y="8"  width="17" height="34" rx="8.5" fill="#1A87EE"/>
+  <!-- mid-left horizontal capsule -->
+  <rect x="4"  y="50" width="34" height="17" rx="8.5" fill="#1A87EE"/>
+  <!-- mid-right horizontal capsule -->
+  <rect x="48" y="50" width="34" height="17" rx="8.5" fill="#1A87EE"/>
+  <!-- bottom-center horizontal capsule -->
+  <rect x="40" y="74" width="34" height="17" rx="8.5" fill="#1A87EE"/>
+  <!-- bottom-right vertical capsule -->
+  <rect x="70" y="66" width="17" height="34" rx="8.5" fill="#1A87EE"/>
+</svg>

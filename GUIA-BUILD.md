@@ -33,10 +33,32 @@ code --install-extension tess-tis-2.X.X.vsix --force
 
 ---
 
-## Instalação alternativa (sem terminal)
+## Instalação recomendada (via UI)
 
-- **CTRL+SHIFT+P → Extensions: Install from VSIX** — selecciona o ficheiro `.vsix`
-- Depois **CTRL+SHIFT+P → Developer: Reload Window**
+Instalar pelo UI do VS Code evita estados "pendentes" que causam o ícone de reload persistente:
+
+1. **CTRL+SHIFT+P → Extensions: Install from VSIX** — selecciona o ficheiro `.vsix`
+2. **CTRL+SHIFT+P → Developer: Reload Window**
+
+> Evitar `code --install-extension` no terminal enquanto o VS Code está aberto —
+> deixa a extensão num estado "pendente de reload" que persiste mesmo após recarregar.
+
+---
+
+## Localização das extensões instaladas localmente
+
+| Sistema   | Pasta                                              |
+|-----------|----------------------------------------------------|
+| Windows   | `%USERPROFILE%\.vscode\extensions\`                |
+| macOS     | `~/.vscode/extensions/`                            |
+| Linux     | `~/.vscode/extensions/`                            |
+
+Cada extensão ocupa uma subpasta com o formato `publisher.nome-versão`, por exemplo:
+`tis-angola.tess-tis-2.1.3`
+
+O ficheiro `.obsolete` na mesma pasta regista versões marcadas para remoção pelo VS Code.
+**Não apagar pastas manualmente** — usar sempre a UI ou `code --uninstall-extension`
+para que o `.obsolete` seja actualizado correctamente.
 
 ---
 

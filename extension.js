@@ -189,12 +189,10 @@ async function fetchAgentModels(apiKey, agentId) {
 async function syncAgentConfig(view, apiKey, agentId) {
     if (!apiKey || !agentId) return;
     const models = await fetchAgentModels(apiKey, agentId);
-    // null  → agente com modelo fixo, esconde selector
-    // array → modelos disponíveis para este agente
-    // undefined → erro, mantém lista actual
-    if (models !== undefined) {
-        view.webview.postMessage({ type: 'setModels', models });
-    }
+    // null      → agente com modelo fixo, esconde selector
+    // array     → modelos disponíveis para este agente
+    // undefined → erro de rede, usa lista estática para não bloquear a interface
+    view.webview.postMessage({ type: 'setModels', models: models !== undefined ? models : MODELS });
 }
 
 // ─── Chamada à API ─────────────────────────────────────────────────────────────
@@ -392,14 +390,13 @@ function buildHtml(logoUri) {
     transform: translate(-50%, -50%);
     pointer-events: none;
     transition: opacity 0.4s ease;
-    opacity: 0.07;
+    opacity: 0.12;
   }
   #watermark.hidden { opacity: 0; }
   #watermark img {
-    width: 72px;
-    height: 72px;
+    width: 96px;
+    height: 96px;
     object-fit: contain;
-    filter: grayscale(100%);
     display: block;
   }
   #empty {
@@ -802,7 +799,17 @@ function buildHtml(logoUri) {
         sendBtn.disabled = true;
         codeBtn.disabled = true;
         { const emptyEl = document.getElementById('empty');
-          if (emptyEl) emptyEl.innerHTML = 'Configure a sua ligação à Tess antes de continuar.<br><small>Ctrl+, → pesquise <strong>tess</strong> → preencha <em>API Key</em> e <em>Agent ID</em></small>'; }
+          const msg = 'Configure a sua ligação à Tess antes de continuar.<br><small>Ctrl+, → pesquise <strong>tess</strong> → preencha <em>API Key</em> e <em>Agent ID</em></small>';
+          if (emptyEl) {
+            emptyEl.innerHTML = msg;
+          } else {
+            const banner = document.getElementById('not-configured-banner') || document.createElement('div');
+            banner.id = 'not-configured-banner';
+            banner.style.cssText = 'padding:12px;text-align:center;font-size:12px;color:var(--vscode-descriptionForeground);border-bottom:1px solid var(--vscode-panel-border);background:var(--vscode-sideBar-background);flex-shrink:0;';
+            banner.innerHTML = msg;
+            messagesEl.parentElement.insertBefore(banner, messagesEl);
+          }
+        }
         break;
       case 'setModels':
         if (!configured) {
@@ -810,6 +817,8 @@ function buildHtml(logoUri) {
           inputEl.disabled = false;
           sendBtn.disabled = false;
           codeBtn.disabled = false;
+          const banner = document.getElementById('not-configured-banner');
+          if (banner) banner.remove();
           const emptyEl = document.getElementById('empty');
           if (emptyEl) emptyEl.innerHTML = 'Olá! Como posso ajudar?<br><small>O código do editor activo é incluído automaticamente.</small>';
         }

@@ -16,3 +16,5 @@ Um ADR documenta uma decisão técnica significativa: o contexto que a motivou, 
 | [ADR-006](ADR-006-sessao-persistente.md) | Sessão persistente com workspaceState | Aceite |
 | [ADR-007](ADR-007-medidor-contexto.md) | Medidor de contexto com estimativa de tokens | Aceite |
 | [ADR-008](ADR-008-modelos-dinamicos.md) | Modelos dinâmicos via GET /agents/{id} | Aceite |
+| [ADR-009](ADR-009-bundle-e-publicacao.md) | Bundle com esbuild para publicação na Marketplace | Proposto |
+| [ADR-010](ADR-010-configuracao-global-e-banner-nao-configurado.md) | Configuração global e banner de estado não configurado | Aceite |

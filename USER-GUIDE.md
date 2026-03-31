@@ -62,9 +62,9 @@ A extensão precisa de dois valores para funcionar: uma **API Key** e um **Agent
 | `tess.apiKey`  | O token criado em tess.im/dashboard/user/tokens |
 | `tess.agentId` | O número do URL do agente                     |
 
-Após guardar, a extensão contacta o agente e carrega automaticamente os modelos disponíveis.
+> **Nota:** estas definições têm âmbito global (`application`) — são configuradas uma única vez e ficam disponíveis em todos os workspaces. Não é necessário repetir a configuração ao abrir um projecto diferente.
 
-> **Nota:** Se o campo `tess.apiKey` estiver vazio, a extensão mostra um aviso no painel ao tentar enviar a primeira mensagem.
+Após guardar, a extensão detecta a alteração automaticamente e activa o painel sem necessidade de recarregar o VS Code.
 
 ---
 
@@ -192,7 +192,7 @@ A conversa é guardada automaticamente por projecto (workspace). Ao fechar e rea
 - O modelo seleccionado é mantido
 - O medidor de contexto reflecte o estado anterior
 
-Cada workspace tem a sua própria sessão independente. Abrir um projecto diferente inicia uma conversa separada.
+Cada workspace tem a sua própria sessão independente — abrir um projecto diferente inicia uma conversa separada. As credenciais (`tess.apiKey` e `tess.agentId`), porém, são globais e partilhadas entre todos os workspaces.
 
 ---
 
@@ -218,12 +218,13 @@ Pode configurar um atalho personalizado para abrir o painel:
 
 | Sintoma | Causa provável | Solução |
 |---------|---------------|---------|
-| "API Key não configurada" | `tess.apiKey` vazio | `Ctrl+,` → preencher `tess.apiKey` |
-| "Agent ID não configurado" | `tess.agentId` vazio | `Ctrl+,` → preencher `tess.agentId` |
+| Painel mostra aviso de configuração e inputs bloqueados | `tess.apiKey` ou `tess.agentId` não preenchidos | Clique no ícone ⚙ no topo do painel ou `Ctrl+,` → pesquise `tess` |
+| "API Key não configurada" ao enviar mensagem | `tess.apiKey` vazio | `Ctrl+,` → preencher `tess.apiKey` |
+| "Agent ID não configurado" ao enviar mensagem | `tess.agentId` vazio | `Ctrl+,` → preencher `tess.agentId` |
 | Selector de modelo não aparece | Agente com modelo fixo | Normal — o agente não expõe escolha de modelo |
 | Resposta parou a meio | Timeout ou erro de rede | Clique Cancelar e tente novamente |
 | Painel não aparece na barra lateral | Vista oculta | `View → Open View… → Tess Chat` |
 
 ---
 
-*Guia do utilizador para a versão 2.0.0 da extensão Tess Tis · [TIS Angola](https://tis.ao)*
+*Guia do utilizador para a versão 2.1.0 da extensão Tess Tis · [TIS Angola](https://tis.ao)*

@@ -58,6 +58,8 @@ ________________________________________________________
 | `tess.agentId` | O número do URL do agente (passo 2) |
 --------------------------------------------------------
 
+> **Nota:** estas definições são globais — configuradas uma vez, ficam disponíveis em todos os workspaces.
+
 Após guardar as definições, a extensão detecta automaticamente os modelos disponíveis no agente.
 
 ---
@@ -120,7 +122,7 @@ Esta extensão nasceu do nosso compromisso com o **Manifesto Hypercoding** — a
 
 - Site: [tis.ao](https://tis.ao)
 - Autor: Marco Guimarães
-- Versão: 2.0.0 · Lançamento: Março 2026
+- Versão: 2.1.0 · Lançamento: Março 2026
 
 ---
 

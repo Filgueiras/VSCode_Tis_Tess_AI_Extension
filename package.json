@@ -1,6 +1,6 @@
 {
   "name": "tis-tess",
-  "displayName": "Tis Tess",
+  "displayName": "Tis.ai - Powered by Tess",
   "description": "Assistente de código IA para VS Code — powered by TIS to use Tess.im",
   "version": "2.1.0",
   "publisher": "tis-angola",
@@ -41,7 +41,7 @@
       "activitybar": [
         {
           "id": "tis-sidebar",
-          "title": "Tis Tess",
+          "title": "Tis.ai - Tess",
           "icon": "tis_vector_vscode.svg"
         }
       ]
@@ -51,7 +51,7 @@
         {
           "type": "webview",
           "id": "tess.chatView",
-          "name": "Chat",
+          "name": "Chat Tis.ai",
           "icon": "tis_vector_vscode.svg"
         },
         {
@@ -143,7 +143,7 @@
       ]
     },
     "configuration": {
-      "title": "Tis Tess",
+      "title": "Tis.ai",
       "properties": {
         "tess.apiKey": {
           "type": "string",

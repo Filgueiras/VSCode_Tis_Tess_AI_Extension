@@ -15,6 +15,8 @@ Para comunicar com um agente precisas de dois valores:
 | **API Key** | [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens) |
 | **Agent ID** | Número no URL do agente: `tess.im/dashboard/agents/**12345**/edit` |
 
+> **Segurança:** Nunca coloque a API Key directamente no código. Use sempre variáveis de ambiente (ver exemplos abaixo).
+
 ---
 
 ## Endpoint principal
@@ -83,12 +85,30 @@ Content-Type: application/json
 
 ## Exemplos por ferramenta
 
+### Variáveis de ambiente (configuração prévia)
+
+Antes de correr qualquer exemplo, defina as variáveis de ambiente:
+
+**Windows (PowerShell):**
+```powershell
+$env:TESS_AGENT_ID = "12345"
+$env:TESS_API_KEY  = "o_teu_token_aqui"
+```
+
+**macOS / Linux (Bash):**
+```bash
+export TESS_AGENT_ID="12345"
+export TESS_API_KEY="o_teu_token_aqui"
+```
+
+---
+
 ### cURL
 
 **Resposta simples:**
 ```bash
-curl -s -X POST "https://api.tess.im/agents/12345/openai/chat/completions" \
-  -H "Authorization: Bearer SEU_TOKEN" \
+curl -s -X POST "https://api.tess.im/agents/${TESS_AGENT_ID}/openai/chat/completions" \
+  -H "Authorization: Bearer ${TESS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -99,8 +119,8 @@ curl -s -X POST "https://api.tess.im/agents/12345/openai/chat/completions" \
 
 **Streaming:**
 ```bash
-curl -s -X POST "https://api.tess.im/agents/12345/openai/chat/completions" \
-  -H "Authorization: Bearer SEU_TOKEN" \
+curl -s -X POST "https://api.tess.im/agents/${TESS_AGENT_ID}/openai/chat/completions" \
+  -H "Authorization: Bearer ${TESS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -114,56 +134,72 @@ curl -s -X POST "https://api.tess.im/agents/12345/openai/chat/completions" \
 
 ### JavaScript / Node.js (fetch)
 
+> Requer Node.js 18+. Para versões anteriores use o SDK OpenAI (ver abaixo) ou a biblioteca `node-fetch`.
+
 ```javascript
-const AGENT_ID = '12345';
-const API_KEY  = 'SEU_TOKEN';
+const AGENT_ID = process.env.TESS_AGENT_ID;
+const API_KEY  = process.env.TESS_API_KEY;
 
 async function perguntarTess(mensagem) {
   const response = await fetch(
     `https://api.tess.im/agents/${AGENT_ID}/openai/chat/completions`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json'
+        "Authorization": `Bearer ${API_KEY}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        messages: [{ role: 'user', content: mensagem }]
+        messages: [{ role: "user", content: mensagem }]
       })
     }
   );
+
+  if (!response.ok) {
+    throw new Error(`Tess API error: ${response.status} ${response.statusText}`);
+  }
 
   const data = await response.json();
   return data.choices[0].message.content;
 }
 
-perguntarTess('O que é uma closure em JavaScript?').then(console.log);
+perguntarTess("O que é uma closure em JavaScript?").then(console.log);
 ```
 
-**Com streaming (Node.js):**
+**Com streaming (Node.js 18+):**
 ```javascript
 async function perguntarTessStream(mensagem) {
   const response = await fetch(
     `https://api.tess.im/agents/${AGENT_ID}/openai/chat/completions`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json'
+        "Authorization": `Bearer ${API_KEY}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        messages: [{ role: 'user', content: mensagem }],
+        messages: [{ role: "user", content: mensagem }],
         stream: true
       })
     }
   );
 
-  for await (const chunk of response.body) {
-    const lines = chunk.toString().split('\n');
+  if (!response.ok) {
+    throw new Error(`Tess API error: ${response.status} ${response.statusText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const lines = decoder.decode(value).split("\n");
     for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
+      if (!line.startsWith("data: ")) continue;
       const raw = line.slice(6).trim();
-      if (raw === '[DONE]') break;
+      if (raw === "[DONE]") return;
       try {
         const parsed = JSON.parse(raw);
         const text = parsed.choices?.[0]?.delta?.content;
@@ -179,10 +215,11 @@ async function perguntarTessStream(mensagem) {
 ### Python (requests)
 
 ```python
+import os
 import requests
 
-AGENT_ID = "12345"
-API_KEY  = "SEU_TOKEN"
+AGENT_ID = os.environ["TESS_AGENT_ID"]
+API_KEY  = os.environ["TESS_API_KEY"]
 
 def perguntar_tess(mensagem: str) -> str:
     response = requests.post(
@@ -203,10 +240,14 @@ print(perguntar_tess("O que é uma closure em Python?"))
 
 **Com streaming (Python):**
 ```python
-import requests
+import os
 import json
+import requests
 
-def perguntar_tess_stream(mensagem: str):
+AGENT_ID = os.environ["TESS_AGENT_ID"]
+API_KEY  = os.environ["TESS_API_KEY"]
+
+def perguntar_tess_stream(mensagem: str) -> None:
     response = requests.post(
         f"https://api.tess.im/agents/{AGENT_ID}/openai/chat/completions",
         headers={
@@ -236,22 +277,25 @@ def perguntar_tess_stream(mensagem: str):
             if text:
                 print(text, end="", flush=True)
         except json.JSONDecodeError:
-            pass
+            pass  # chunk incompleto, ignorar
 ```
 
 ---
 
 ### SDK OpenAI (Python ou JS)
 
-Como o endpoint é compatível com OpenAI, podes usar o SDK oficial mudando apenas a `base_url`:
+Como o endpoint é compatível com OpenAI, podes usar o SDK oficial mudando apenas a `base_url`.
+
+> **Como funciona:** O SDK acrescenta automaticamente `/chat/completions` à `base_url`. Por isso a base URL termina em `/openai` — o path completo resultante é `/agents/{id}/openai/chat/completions`.
 
 **Python:**
 ```python
+import os
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="SEU_TOKEN",
-    base_url="https://api.tess.im/agents/12345/openai"
+    api_key=os.environ["TESS_API_KEY"],
+    base_url=f"https://api.tess.im/agents/{os.environ['TESS_AGENT_ID']}/openai"
 )
 
 response = client.chat.completions.create(
@@ -263,16 +307,16 @@ print(response.choices[0].message.content)
 
 **JavaScript:**
 ```javascript
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: 'SEU_TOKEN',
-  baseURL: 'https://api.tess.im/agents/12345/openai'
+  apiKey: process.env.TESS_API_KEY,
+  baseURL: `https://api.tess.im/agents/${process.env.TESS_AGENT_ID}/openai`
 });
 
 const response = await client.chat.completions.create({
-  model: 'tess-5',
-  messages: [{ role: 'user', content: 'Olá!' }]
+  model: "tess-5",
+  messages: [{ role: "user", content: "Olá!" }]
 });
 console.log(response.choices[0].message.content);
 ```
@@ -301,7 +345,7 @@ O conteúdo incremental está sempre em `choices[0].delta.content`. O stream ter
 
 ```bash
 curl -s "https://api.tess.im/api/agents" \
-  -H "Authorization: Bearer SEU_TOKEN"
+  -H "Authorization: Bearer ${TESS_API_KEY}"
 ```
 
 A resposta é paginada e inclui para cada agente: `id`, `slug`, `title`, `type`, `visibility`.
@@ -322,4 +366,4 @@ Consulta o [README](readme.md) para mais detalhes sobre a extensão.
 
 ---
 
-*Documentação gerada para a versão 2.0.0 da extensão Tess Tis · TIS Angola*
+*Documentação gerada para a versão 2.1.0 da extensão Tess Tis · TIS Angola*

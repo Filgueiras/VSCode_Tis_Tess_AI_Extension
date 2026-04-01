@@ -1,98 +1,147 @@
 {
-  "name": "tess-tis",
+  "name": "tis-tess",
+  "displayName": "Tis Tess",
+  "description": "Assistente de código IA para VS Code — powered by TIS to use Tess.im",
+  "version": "2.1.0",
   "publisher": "tis-angola",
-  "displayName": "Tess Tis",
-  "description": "Assistente de código IA da TIS Angola, conectado ao seu agente na Tess — chat interactivo com streaming e selecção de modelo LLM",
-  "version": "2.1.3",
   "author": {
     "name": "Marco Guimarães",
     "url": "https://tis.ao"
   },
-  "icon": "icon.png",
+  "icon": "icon-tis-tess.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Filgueiras/tis-tess"
+  },
   "engines": {
     "vscode": "^1.60.0"
   },
   "categories": [
     "AI",
     "Chat",
-    "Machine Learning",
-    "hypercoding"
+    "Programming Languages"
+  ],
+  "keywords": [
+    "tess",
+    "ai",
+    "chat",
+    "assistant",
+    "claude",
+    "gpt",
+    "gemini",
+    "tis angola"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onView:tess.chatView",
-    "onCommand:tess.openChatWithCode",
-    "onCommand:tess.openSettings"
+    "onView:tess.chatView"
   ],
   "main": "./extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "tess-sidebar",
-          "title": "Tess Tis",
-          "icon": "icon-activity.svg"
+          "id": "tis-sidebar",
+          "title": "Tis Tess",
+          "icon": "tis_vector_vscode.svg"
         }
       ]
     },
     "views": {
-      "tess-sidebar": [
+      "tis-sidebar": [
         {
           "type": "webview",
           "id": "tess.chatView",
-          "name": "Chat"
+          "name": "Tis Tess",
+          "icon": "tis_vector_vscode.svg"
+        },
+        {
+          "id": "fileTreeView",
+          "name": "Ficheiros do Projecto",
+          "type": "tree"
         }
       ]
     },
     "commands": [
       {
         "command": "tess.openChatWithCode",
-        "title": "Tess: Chat com Código Actual"
+        "title": "Tis: Chat com Código Actual"
       },
       {
         "command": "tess.openSettings",
-        "title": "Tess: Configurações",
-        "icon": "$(gear)"
+        "title": "Tis: Abrir Definições"
+      },
+      {
+        "command": "fileTree.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "command": "tess.openChatWithCode",
-          "group": "tess",
+          "group": "tess@1",
           "when": "editorTextFocus"
         }
       ],
       "view/title": [
         {
-          "command": "tess.openSettings",
-          "when": "view == tess.chatView",
+          "command": "fileTree.refresh",
+          "when": "view == fileTreeView",
           "group": "navigation"
         }
       ]
     },
     "configuration": {
-      "title": "Tess AI",
+      "title": "Tis Tess",
       "properties": {
         "tess.apiKey": {
           "type": "string",
           "default": "",
-          "scope": "application",
-          "description": "API Key do Tess AI (obter em tess.im/dashboard/user/tokens)"
+          "description": "Token de API da plataforma Tess.im. Obtenha em tess.im/dashboard/user/tokens",
+          "markdownDescription": "Token de API da plataforma Tess.im. Obtenha em [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens)"
         },
         "tess.agentId": {
           "type": "string",
           "default": "",
-          "scope": "application",
-          "description": "ID do agente Chat do Tess (número inteiro visível no URL do agente)"
+          "description": "ID numérico do agente Tess. Visível no URL do agente: tess.im/dashboard/agents/12345/edit",
+          "markdownDescription": "ID numérico do agente Tess. Visível no URL do agente: `tess.im/dashboard/agents/**12345**/edit`"
         }
       }
     }
+  },
+  "scripts": {
+    "package": "npx vsce package",
+    "install-ext": "npx vsce package && code --install-extension tis-tess-*.vsix --force"
   },
   "dependencies": {
     "axios": "^1.6.0"
   },
   "devDependencies": {
-    "esbuild": "^0.27.4"
+    "@vscode/vsce": "^2.22.0"
   }
 }
+
+
+// Adicionar em "views" > "tis-sidebar":
+{
+    "id": "tess.historyView",
+    "name": "Histórico",
+    "type": "tree"
+}
+
+// Adicionar em "commands":
+{ "command": "tess.refreshHistory", "title": "Refresh", "icon": "$(refresh)" },
+{ "command": "tess.deleteSession",  "title": "Apagar conversa", "icon": "$(trash)" },
+{ "command": "tess.renameSession",  "title": "Renomear conversa", "icon": "$(edit)" },
+{ "command": "tess.clearHistory",   "title": "Tis: Limpar histórico" },
+{ "command": "tess.loadSession",    "title": "Carregar conversa" }
+
+// Adicionar em "menus":
+"view/title": [
+    { "command": "tess.refreshHistory", "when": "view == tess.historyView", "group": "navigation" },
+    { "command": "tess.clearHistory",   "when": "view == tess.historyView", "group": "navigation" }
+],
+"view/item/context": [
+    { "command": "tess.renameSession", "when": "viewItem == historyItem", "group": "1_edit@1" },
+    { "command": "tess.deleteSession", "when": "viewItem == historyItem", "group": "1_edit@2" }

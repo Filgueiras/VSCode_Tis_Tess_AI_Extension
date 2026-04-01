@@ -18,3 +18,8 @@ Um ADR documenta uma decisão técnica significativa: o contexto que a motivou, 
 | [ADR-008](ADR-008-modelos-dinamicos.md) | Modelos dinâmicos via GET /agents/{id} | Aceite |
 | [ADR-009](ADR-009-bundle-e-publicacao.md) | Bundle com esbuild para publicação na Marketplace | Proposto |
 | [ADR-010](ADR-010-configuracao-global-e-banner-nao-configurado.md) | Configuração global e banner de estado não configurado | Aceite |
+| [ADR-011](ADR-011-modularizacao.md) | Modularização do código fonte | Aceite |
+| [ADR-012](ADR-012-webview-ficheiros-estaticos.md) | WebView com ficheiros estáticos (CSS + JS externos) | Aceite |
+| [ADR-013](ADR-013-tool-calling-tags.md) | Protocolo de Tool Calling via tags de texto | Aceite |
+| [ADR-014](ADR-014-seguranca-xss-webview.md) | Segurança: prevenção de XSS no WebView | Aceite |
+| [ADR-015](ADR-015-retry-rate-limit.md) | Retry automático no erro 429 (Rate Limit) | Aceite |

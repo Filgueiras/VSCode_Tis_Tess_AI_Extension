@@ -1,6 +1,6 @@
 # Guia de Build — Tess Tis
 
-## Processo completo (versão nova)
+## Processo completo
 
 ```bash
 # 1. Actualizar a versão (MAJOR.MINOR.PATCH — ver tabela abaixo)
@@ -8,18 +8,42 @@ npm version 2.X.X --no-git-tag-version
 
 # 2. Gerar o .vsix
 npx vsce package
-
-# 3. Remover versões antigas instaladas e instalar a nova
-rm -rf "$USERPROFILE/.vscode/extensions/tis-angola.tess-tis-"*
-code --install-extension tess-tis-2.X.X.vsix --force
-
-# 4. Recarregar o VS Code
-# CTRL+SHIFT+P → Developer: Reload Window
 ```
 
-> **Nota:** O VS Code não substitui versões antigas automaticamente ao instalar via VSIX —
-> adiciona uma nova pasta lado a lado. Sem o passo 3, acumulam-se versões em conflito
-> e o ícone de reload fica persistente.
+Após gerar o `.vsix`, instale pelo método recomendado abaixo.
+
+---
+
+## Instalação recomendada (via UI do VS Code)
+
+Este é o método correcto — evita estados "pendentes" que causam o ícone de reload persistente:
+
+1. **`Ctrl+Shift+P` → Extensions: Install from VSIX** — selecciona o ficheiro `.vsix` gerado
+2. **`Ctrl+Shift+P` → Developer: Reload Window**
+
+> **Importante:** Evite usar `code --install-extension` no terminal enquanto o VS Code está aberto.
+> O comando deixa a extensão num estado "pendente de reload" que persiste mesmo após recarregar.
+
+---
+
+## Limpar versões antigas (quando necessário)
+
+O VS Code não substitui versões antigas automaticamente ao instalar via VSIX — adiciona uma nova pasta lado a lado. Se houver versões em conflito, remova manualmente **com o VS Code fechado**:
+
+**Windows (PowerShell):**
+```powershell
+Remove-Item "$env:USERPROFILE\.vscode\extensions\tis-angola.tis-tess-*" -Recurse -Force
+```
+
+**macOS / Linux (Bash):**
+```bash
+rm -rf ~/.vscode/extensions/tis-angola.tis-tess-*
+```
+
+Depois reabra o VS Code e instale a versão pretendida via UI.
+
+> **Nota:** O ficheiro `.obsolete` na pasta de extensões regista versões marcadas para remoção.
+> A remoção manual acima é segura quando feita com o VS Code fechado.
 
 ---
 
@@ -33,32 +57,16 @@ code --install-extension tess-tis-2.X.X.vsix --force
 
 ---
 
-## Instalação recomendada (via UI)
-
-Instalar pelo UI do VS Code evita estados "pendentes" que causam o ícone de reload persistente:
-
-1. **CTRL+SHIFT+P → Extensions: Install from VSIX** — selecciona o ficheiro `.vsix`
-2. **CTRL+SHIFT+P → Developer: Reload Window**
-
-> Evitar `code --install-extension` no terminal enquanto o VS Code está aberto —
-> deixa a extensão num estado "pendente de reload" que persiste mesmo após recarregar.
-
----
-
 ## Localização das extensões instaladas localmente
 
-| Sistema   | Pasta                                              |
-|-----------|----------------------------------------------------|
-| Windows   | `%USERPROFILE%\.vscode\extensions\`                |
-| macOS     | `~/.vscode/extensions/`                            |
-| Linux     | `~/.vscode/extensions/`                            |
+| Sistema   | Pasta                                |
+|-----------|--------------------------------------|
+| Windows   | `%USERPROFILE%\.vscode\extensions\` |
+| macOS     | `~/.vscode/extensions/`              |
+| Linux     | `~/.vscode/extensions/`              |
 
-Cada extensão ocupa uma subpasta com o formato `publisher.nome-versão`, por exemplo:
-`tis-angola.tess-tis-2.1.3`
-
-O ficheiro `.obsolete` na mesma pasta regista versões marcadas para remoção pelo VS Code.
-**Não apagar pastas manualmente** — usar sempre a UI ou `code --uninstall-extension`
-para que o `.obsolete` seja actualizado correctamente.
+Cada extensão ocupa uma subpasta com o formato `publisher.nome-versão`:
+`tis-angola.tis-tess-2.1.3`
 
 ---
 

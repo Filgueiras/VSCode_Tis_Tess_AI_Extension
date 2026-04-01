@@ -28,5 +28,5 @@ Usar `WebviewViewProvider` com HTML/CSS/JS embebido para construir a interface d
 
 - A extensão tem o seu próprio painel na Activity Bar, independente do Copilot
 - Não beneficia de funcionalidades nativas do Chat Participant (slash commands do Copilot, referências `#file`, etc.)
-- O HTML do webview (~350 linhas) está embebido em `extension.js`, o que aumenta o tamanho do ficheiro mas elimina dependências de ficheiros externos
-- Qualquer actualização à UI requer editar o ficheiro `extension.js`
+- ~~O HTML do webview está embebido em `extension.js`~~ — **revisto em ADR-012**: CSS e JS foram separados em ficheiros estáticos em `src/webview/`, servidos via `asWebviewUri()`
+- Actualizações à UI são feitas em `src/webview/webview.css` e `src/webview/webview-script.js`

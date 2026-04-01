@@ -1,6 +1,6 @@
 # ADR-006 — Sessão persistente com workspaceState
 
-**Estado:** Aceite
+**Estado:** Aceite (revisto 2026-04-01)
 **Data:** 2026-03-30
 
 ---
@@ -24,8 +24,11 @@ Guardar o histórico de conversa e o modelo seleccionado em `vscode.ExtensionCon
 
 1. O webview envia `{ type: 'saveHistory', history, model }` após cada resposta completa do assistente e ao limpar
 2. A extensão persiste com `context.workspaceState.update('tess.history', history)`
-3. Em `resolveWebviewView`, a extensão lê o estado guardado e envia `{ type: 'restoreHistory' }` ao webview após 150 ms (garante que o webview está pronto)
-4. O webview reconstrói os bubbles e restaura o modelo seleccionado
+3. O webview envia `{ type: 'ready' }` assim que o script carregou e o DOM está pronto
+4. A extensão recebe o `ready` e chama `_onWebviewReady()`, que restaura o histórico e sincroniza a config
+5. O webview reconstrói os bubbles e restaura o modelo seleccionado
+
+> **Revisão 2026-04-01:** O passo 3 original usava `setTimeout(150ms)` — uma heurística frágil que falhava em máquinas lentas. Substituído pelo evento `ready` explícito, eliminando a corrida de condição.
 
 ## Consequências
 

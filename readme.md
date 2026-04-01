@@ -2,9 +2,35 @@
 
 > O seu agente de IA no editor. Desenvolvido por **[TIS Angola](https://tis.ao)**.
 
+![Versão](https://img.shields.io/badge/versão-2.1.0-blue) ![VS Code](https://img.shields.io/badge/VS%20Code-1.60+-informational) ![Publisher](https://img.shields.io/badge/publisher-tis--angola-orange)
+
 ---
 
 **Tess Tis** liga o VS Code directamente à plataforma [Tess.im](https://tess.im) — um hub de inteligência artificial que dá acesso aos melhores modelos do mundo (Claude, GPT, Gemini, e modelos próprios) através de agentes configuráveis. Com esta extensão, o seu agente fica disponível na barra lateral do editor, com contexto de código automático, streaming em tempo real e sessões persistentes.
+
+---
+
+## Primeiros passos em 2 minutos
+
+1. Instale a extensão via `Ctrl+Shift+P` → **Extensions: Install from VSIX** (ou pelo Marketplace)
+2. Crie um token em [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens)
+3. Crie um agente **Chat** em [tess.im](https://tess.im) e copie o ID do URL (`/agents/**12345**/edit`)
+4. Em `Ctrl+,`, pesquise `tess` e preencha `tess.apiKey` e `tess.agentId`
+5. Clique no ícone Tess na barra lateral — está pronto
+
+---
+
+## Instalação
+
+### Via Marketplace (recomendado)
+Pesquise `Tess Tis` no painel de extensões do VS Code ou aceda ao [VS Code Marketplace](https://marketplace.visualstudio.com).
+
+### Via VSIX (instalação manual)
+1. Descarregue o ficheiro `.vsix` da [página de releases](https://github.com/Filgueiras/tis-tess/releases)
+2. `Ctrl+Shift+P` → **Extensions: Install from VSIX** → seleccione o ficheiro
+3. `Ctrl+Shift+P` → **Developer: Reload Window**
+
+> **Nota:** Evite usar `code --install-extension` no terminal enquanto o VS Code está aberto — deixa a extensão num estado pendente que persiste mesmo após recarregar.
 
 ---
 
@@ -51,12 +77,11 @@ Aceda a [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens) e
 ### 3. Configurar a extensão
 
 `Ctrl+,` → pesquise `tess`:
-________________________________________________________
-| Definição      | O que preencher                     |
-|----------------|-------------------------------------|
-| `tess.apiKey`  | O token criado no passo 1           |
-| `tess.agentId` | O número do URL do agente (passo 2) |
---------------------------------------------------------
+
+| Definição      | O que preencher                      |
+|----------------|--------------------------------------|
+| `tess.apiKey`  | O token criado no passo 1            |
+| `tess.agentId` | O número do URL do agente (passo 2)  |
 
 > **Nota:** estas definições são globais — configuradas uma vez, ficam disponíveis em todos os workspaces.
 
@@ -96,21 +121,34 @@ Após guardar as definições, a extensão detecta automaticamente os modelos di
 
 ## Modelos suportados
 
-Os modelos disponíveis dependem da configuração do agente Tess ligado. A extensão detecta-os automaticamente. Os modelos suportados pela plataforma incluem:
-____________________________________________________
-| Fornecedor    | Modelos                          |
-|---------------|----------------------------------|
-| **Tess**      | Tess 5 (modelo próprio)          |
-| **Anthropic** | Claude Opus, Sonnet e Haiku 4.5  |
-| **OpenAI**    | GPT-4o, GPT-4.1                  |
-| **Google**    | Gemini 2.5 Pro, Gemini 2.0 Flash |
-----------------------------------------------------
+Os modelos disponíveis dependem da configuração do agente Tess ligado. A extensão detecta-os automaticamente.
+
+| Fornecedor    | Modelos                           |
+|---------------|-----------------------------------|
+| **Tess**      | Tess 5 (modelo próprio)           |
+| **Anthropic** | Claude Opus, Sonnet e Haiku 4.5   |
+| **OpenAI**    | GPT-4o, GPT-4.1                   |
+| **Google**    | Gemini 2.5 Pro, Gemini 2.0 Flash  |
+
+---
 
 ## Requisitos
 
 - VS Code 1.60 ou superior
 - Conta em [tess.im](https://tess.im) com um agente Chat criado
 - Token de API da Tess
+
+---
+
+## Resolução de problemas
+
+| Problema | Causa provável | Solução |
+|---|---|---|
+| Token não aceite | Token expirado ou copiado incorrectamente | Gere um novo token em tess.im/dashboard/user/tokens |
+| Modelos não aparecem | `agentId` incorrecto | Confirme o número no URL do agente |
+| Ícone de reload persistente | Extensão instalada via terminal com VS Code aberto | Use sempre a UI: `Extensions: Install from VSIX` |
+| Contexto não enviado | Workspace sem ficheiros abertos | Abra uma pasta com `File → Open Folder` |
+| Resposta vazia | Limite de contexto atingido | Inicie uma nova sessão com `[Limpar]` |
 
 ---
 
@@ -126,4 +164,4 @@ Esta extensão nasceu do nosso compromisso com o **Manifesto Hypercoding** — a
 
 ---
 
-*Publisher: `tis-angola` · ID: `tis-angola.tess-tis`*
+*Publisher: `tis-angola` · ID: `tis-angola.tis-tess`*

@@ -101,6 +101,33 @@ async function pickWorkspaceFiles(view) {
     view.webview.postMessage({ type: 'insertFiles', files });
 }
 
+/**
+ * Gera a árvore do workspace e envia para o WebView como contexto injectado.
+ * @param {import('vscode').WebviewView} view
+ */
+async function sendWorkspaceContext(view) {
+    const folders = vscode.workspace.workspaceFolders;
+
+    if (!folders || folders.length === 0) {
+        vscode.window.showWarningMessage('Nenhum workspace aberto.');
+        return;
+    }
+
+    const tree = await getWorkspaceTree();
+
+    if (!tree) {
+        vscode.window.showWarningMessage('Não foi possível gerar a árvore do projecto.');
+        return;
+    }
+
+    view.webview.postMessage({
+        type: 'insertContext',
+        context: tree,
+        label: `📁 ${path.basename(folders[0].uri.fsPath)}`
+    });
+}
+
+
 // ─── Código do editor activo ───────────────────────────────────────────────────
 
 /**
@@ -126,5 +153,6 @@ module.exports = {
     getWorkspaceTree,
     readWorkspaceFile,
     pickWorkspaceFiles,
+    sendWorkspaceContext,
     getCurrentCode
 };

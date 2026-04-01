@@ -4,7 +4,9 @@
 const vscode = require('vscode');
 const { handleSend }                        = require('./api');
 const { syncAgentConfig, MODELS, MODEL_LIMITS } = require('./models');
-const { getCurrentCode, pickWorkspaceFiles } = require('./workspace');
+
+const { getCurrentCode, pickWorkspaceFiles, sendWorkspaceContext } = require('./workspace');
+
 const { buildHtml }                         = require('./webview');
 const { executeTool }                       = require('./tools');
 const chatHistory                           = require('./chatHistory');
@@ -108,6 +110,10 @@ class TessChatViewProvider {
 
             case 'pickFile':
                 await pickWorkspaceFiles(this._view);
+                break;
+
+            case 'getWorkspaceContext':
+                await sendWorkspaceContext(this._view);
                 break;
 
             case 'toolCall':

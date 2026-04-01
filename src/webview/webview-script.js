@@ -10,6 +10,7 @@ const inputEl        = document.getElementById('userInput');
 const sendBtn        = document.getElementById('sendBtn');
 const modelSelect    = document.getElementById('modelSelect');
 const codeBtn        = document.getElementById('codeBtn');
+const contextBtn     = document.getElementById('contextBtn');
 const clearBtn       = document.getElementById('clearBtn');
 const watermarkEl    = document.getElementById('watermark');
 const modelRowEl     = document.getElementById('modelRow');
@@ -484,6 +485,7 @@ inputEl.addEventListener('input', () => {
 });
 
 codeBtn.addEventListener('click', () => vscode.postMessage({ type: 'pickFile' }));
+contextBtn.addEventListener('click', () => vscode.postMessage({ type: 'getWorkspaceContext' }));
 modelSelect.addEventListener('change', updateContextMeter);
 
 clearBtn.addEventListener('click', () => {
@@ -582,11 +584,24 @@ window.addEventListener('message', ({ data }) => {
             }
             break;
 
+        case 'insertContext':
+            if (data.context) {
+                const prefix = `<!-- Contexto do projecto: ${data.label} -->\n`;
+                const block  = '\n' + data.context + '\n';
+                inputEl.value = inputEl.value
+                    ? inputEl.value + '\n\n' + prefix + block
+                    : prefix + block;
+                autoResize();
+                inputEl.focus();
+            }
+            break;
+
         case 'notConfigured':
-            configured       = false;
-            inputEl.disabled = true;
-            sendBtn.disabled = true;
-            codeBtn.disabled = true;
+            configured          = false;
+            inputEl.disabled    = true;
+            sendBtn.disabled    = true;
+            codeBtn.disabled    = true;
+            contextBtn.disabled = true;
             {
                 const emptyEl = document.getElementById('empty');
                 const msg = 'Configure a sua liga\u00E7\u00E3o \u00E0 Tess antes de continuar.<br>'
@@ -608,10 +623,11 @@ window.addEventListener('message', ({ data }) => {
 
         case 'setModels':
             if (!configured) {
-                configured       = true;
-                inputEl.disabled = false;
-                sendBtn.disabled = false;
-                codeBtn.disabled = false;
+                configured          = true;
+                inputEl.disabled    = false;
+                sendBtn.disabled    = false;
+                codeBtn.disabled    = false;
+                contextBtn.disabled = false;
                 const banner  = document.getElementById('not-configured-banner');
                 if (banner) banner.remove();
                 const emptyEl = document.getElementById('empty');

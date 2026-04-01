@@ -1,8 +1,3 @@
-//https://pareto-workflows.storage.googleapis.com/e176716b758170237ff42a25e7afed34e2d66d0a/webview.js
-// ─── Tess Tis — WebView Builder ─────────────────────────────────────────────
-// Responsabilidade: gerar o HTML estrutural do painel de chat.
-// CSS e JS são carregados como ficheiros estáticos via asWebviewUri.
-
 'use strict';
 
 /**
@@ -61,7 +56,10 @@ function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits) {
 
   <!-- ── Input ────────────────────────────────────────────────────────────── -->
   <div id="inputArea">
-    <button class="btn-ghost" id="codeBtn">📎 Adicionar ficheiros</button>
+    <div id="actionButtons">
+      <button class="btn-ghost" id="codeBtn">📎 Adicionar ficheiros</button>
+      <button class="btn-ghost" id="contextBtn">🗂️ Contexto do projecto</button>
+    </div>
     <div id="inputRow">
       <textarea
         id="userInput"

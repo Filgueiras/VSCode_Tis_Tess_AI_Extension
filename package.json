@@ -51,7 +51,7 @@
         {
           "type": "webview",
           "id": "tess.chatView",
-          "name": "Tis Tess",
+          "name": "Chat",
           "icon": "tis_vector_vscode.svg"
         },
         {

@@ -1,5 +1,3 @@
-//https://pareto-workflows.storage.googleapis.com/212aca51fceb76764751447b75b2ae328a4d1f7c/webview-script.js
-
 // ─── Tess Tis — WebView Script ──────────────────────────────────────────────
 // Corre dentro do WebView (contexto de browser, sem acesso a Node.js)
 
@@ -20,11 +18,11 @@ const contextLabelEl = document.getElementById('contextLabel');
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
 
-let history        = [];
+let history         = [];
 let assistantBubble = null;
-let waiting        = false;
-let actualTokens   = null;
-let configured     = false;
+let waiting         = false;
+let actualTokens    = null;
+let configured      = false;
 
 // ─── Medidor de contexto ─────────────────────────────────────────────────────
 
@@ -56,114 +54,241 @@ function saveHistory() {
     vscode.postMessage({ type: 'saveHistory', history, model: modelSelect.value });
 }
 
-// ─── Render de conteúdo (seguro — sem innerHTML directo) ─────────────────────
+// ─── Render inline (negrito, itálico, código, links) ─────────────────────────
 
 /**
- * Converte texto simples em nós DOM, detectando URLs e criando <a> clicáveis.
- * Não usa innerHTML para evitar XSS.
+ * Processa formatação inline e appenda nós no elemento pai.
+ * @param {HTMLElement} parent
+ * @param {string} text
  */
-function renderTextWithLinks(text) {
-    const fragment = document.createDocumentFragment();
-    const urlRegex = /https?:\/\/[^\s\)\]\>"']+/g;
-    let last = 0;
+function appendInline(parent, text) {
+    const inlineRegex = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`|https?:\/\/[^\s\)\]\>"']+)/g;
+    let last  = 0;
     let match;
-    while ((match = urlRegex.exec(text)) !== null) {
+
+    while ((match = inlineRegex.exec(text)) !== null) {
         if (match.index > last) {
-            fragment.appendChild(document.createTextNode(text.slice(last, match.index)));
+            parent.appendChild(document.createTextNode(text.slice(last, match.index)));
         }
-        const a = document.createElement('a');
-        a.href      = match[0];
-        a.textContent = match[0];
-        a.target    = '_blank';
-        a.rel       = 'noopener noreferrer';
-        fragment.appendChild(a);
+        if (match[0].startsWith('**')) {
+            const strong       = document.createElement('strong');
+            strong.textContent = match[2];
+            parent.appendChild(strong);
+        } else if (match[0].startsWith('*')) {
+            const em       = document.createElement('em');
+            em.textContent = match[3];
+            parent.appendChild(em);
+        } else if (match[0].startsWith('`')) {
+            const code       = document.createElement('code');
+            code.textContent = match[4];
+            parent.appendChild(code);
+        } else {
+            const a       = document.createElement('a');
+            a.href        = match[0];
+            a.textContent = match[0];
+            a.target      = '_blank';
+            a.rel         = 'noopener noreferrer';
+            parent.appendChild(a);
+        }
         last = match.index + match[0].length;
     }
+
     if (last < text.length) {
-        fragment.appendChild(document.createTextNode(text.slice(last)));
+        parent.appendChild(document.createTextNode(text.slice(last)));
     }
-    return fragment;
 }
 
+// ─── Render Markdown ──────────────────────────────────────────────────────────
+
 /**
- * Renderiza markdown simples: blocos de código, negrito, itálico, listas e links.
- * Mantém-se seguro usando createElement em vez de innerHTML.
+ * Renderiza markdown: blocos de código (com botão copiar), listas,
+ * cabeçalhos, checkboxes, negrito, itálico, código inline e links.
+ * @param {string} text
+ * @returns {HTMLElement}
  */
 function renderMarkdown(text) {
     const container = document.createElement('div');
-    // Divide blocos de código ```...``` do resto
-    const parts = text.split(/(```[\s\S]*?```)/g);
+    const parts     = text.split(/(```[\s\S]*?```)/g);
 
     for (const part of parts) {
+
+        // ── Bloco de código ──────────────────────────────────────────────────
         if (part.startsWith('```')) {
-            const lines    = part.slice(3).split('\n');
-            const lang     = lines[0].trim();
-            const code     = lines.slice(1).join('\n').replace(/```$/, '');
-            const pre      = document.createElement('pre');
-            const codeEl   = document.createElement('code');
+            const lines  = part.slice(3, -3).split('\n');
+            const lang   = lines[0].trim();
+            const code   = lines.slice(1).join('\n');
+
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'position:relative;margin:8px 0;';
+
+            const pre    = document.createElement('pre');
+            pre.style.margin = '0';
+            const codeEl = document.createElement('code');
             if (lang) codeEl.className = 'language-' + lang;
             codeEl.textContent = code;
             pre.appendChild(codeEl);
-            container.appendChild(pre);
-        } else {
-            // Processa o texto linha a linha para listas, negrito, itálico
-            const lines = part.split('\n');
-            let ul = null;
-            for (const line of lines) {
-                // Lista
-                if (/^[\*\-] /.test(line)) {
-                    if (!ul) { ul = document.createElement('ul'); container.appendChild(ul); }
-                    const li = document.createElement('li');
-                    li.appendChild(renderInline(line.slice(2)));
-                    ul.appendChild(li);
+
+            // Botão copiar
+            const copyBtn = document.createElement('button');
+            copyBtn.textContent   = 'Copiar';
+            copyBtn.style.cssText = [
+                'position:absolute',
+                'top:6px',
+                'right:6px',
+                'padding:2px 8px',
+                'font-size:10px',
+                'cursor:pointer',
+                'border-radius:3px',
+                'border:1px solid var(--vscode-panel-border)',
+                'background:var(--vscode-editor-background)',
+                'color:var(--vscode-descriptionForeground)',
+                'opacity:0',
+                'transition:opacity 0.15s ease'
+            ].join(';');
+
+            wrapper.addEventListener('mouseenter', () => { copyBtn.style.opacity = '1'; });
+            wrapper.addEventListener('mouseleave', () => { copyBtn.style.opacity = '0'; });
+
+            copyBtn.addEventListener('click', () => {
+                const doSuccess = () => {
+                    copyBtn.textContent   = '✓ Copiado';
+                    copyBtn.style.color   = 'var(--vscode-charts-green, #4ec9b0)';
+                    setTimeout(() => {
+                        copyBtn.textContent = 'Copiar';
+                        copyBtn.style.color = 'var(--vscode-descriptionForeground)';
+                    }, 1500);
+                };
+
+                if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(code).then(doSuccess).catch(() => fallbackCopy(code, doSuccess));
                 } else {
-                    if (ul) ul = null;
-                    if (line.trim() === '') {
-                        container.appendChild(document.createElement('br'));
-                    } else {
-                        const p = document.createElement('p');
-                        p.appendChild(renderInline(line));
-                        container.appendChild(p);
-                    }
+                    fallbackCopy(code, doSuccess);
                 }
+            });
+
+            wrapper.appendChild(pre);
+            wrapper.appendChild(copyBtn);
+            container.appendChild(wrapper);
+            continue;
+        }
+
+        // ── Texto normal — linha a linha ─────────────────────────────────────
+        const lines = part.split('\n');
+        let i = 0;
+
+        while (i < lines.length) {
+            const line = lines[i];
+
+            // Linha vazia
+            if (line.trim() === '') {
+                i++;
+                continue;
             }
+
+            // Cabeçalhos # ## ###
+            const headingMatch = line.match(/^(#{1,3})\s+(.*)/);
+            if (headingMatch) {
+                const level = headingMatch[1].length;
+                const el    = document.createElement('h' + (level + 2));
+                el.style.cssText = 'margin:8px 0 4px;font-weight:600;font-size:'
+                    + (level === 1 ? '15px' : level === 2 ? '13px' : '12px');
+                appendInline(el, headingMatch[2]);
+                container.appendChild(el);
+                i++;
+                continue;
+            }
+
+            // Linha horizontal ---
+            if (/^---+$/.test(line.trim())) {
+                const hr = document.createElement('hr');
+                hr.style.cssText = 'border:none;border-top:1px solid var(--vscode-panel-border);margin:8px 0;';
+                container.appendChild(hr);
+                i++;
+                continue;
+            }
+
+            // Checkboxes - [ ] / - [x]  (antes das listas normais)
+            if (/^\s*-\s+\[[ x]\]/i.test(line)) {
+                const ul = document.createElement('ul');
+                ul.style.cssText = 'margin:4px 0;padding-left:20px;list-style:none;';
+                while (i < lines.length && /^\s*-\s+\[[ x]\]/i.test(lines[i])) {
+                    const checked = /\[x\]/i.test(lines[i]);
+                    const li      = document.createElement('li');
+                    li.style.margin = '2px 0';
+                    const cb      = document.createElement('input');
+                    cb.type       = 'checkbox';
+                    cb.checked    = checked;
+                    cb.disabled   = true;
+                    cb.style.marginRight = '6px';
+                    li.appendChild(cb);
+                    appendInline(li, lines[i].replace(/^\s*-\s+\[[ x]\]\s*/i, ''));
+                    ul.appendChild(li);
+                    i++;
+                }
+                container.appendChild(ul);
+                continue;
+            }
+
+            // Listas não ordenadas  - * •
+            if (/^\s*[-*•]\s+/.test(line)) {
+                const ul = document.createElement('ul');
+                ul.style.cssText = 'margin:4px 0;padding-left:20px;';
+                while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) {
+                    const li      = document.createElement('li');
+                    li.style.margin = '2px 0';
+                    appendInline(li, lines[i].replace(/^\s*[-*•]\s+/, ''));
+                    ul.appendChild(li);
+                    i++;
+                }
+                container.appendChild(ul);
+                continue;
+            }
+
+            // Listas ordenadas  1. 2. 3.
+            if (/^\s*\d+\.\s+/.test(line)) {
+                const ol = document.createElement('ol');
+                ol.style.cssText = 'margin:4px 0;padding-left:20px;';
+                while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+                    const li      = document.createElement('li');
+                    li.style.margin = '2px 0';
+                    appendInline(li, lines[i].replace(/^\s*\d+\.\s+/, ''));
+                    ol.appendChild(li);
+                    i++;
+                }
+                container.appendChild(ol);
+                continue;
+            }
+
+            // Parágrafo normal
+            const p = document.createElement('p');
+            p.style.margin = '4px 0';
+            appendInline(p, line);
+            container.appendChild(p);
+            i++;
         }
     }
+
     return container;
 }
 
 /**
- * Renderiza negrito, itálico e links dentro de uma linha de texto.
+ * Fallback de cópia para contextos sem clipboard API.
+ * @param {string} text
+ * @param {Function} onSuccess
  */
-function renderInline(text) {
-    const fragment = document.createDocumentFragment();
-    // Regex que captura **bold**, *italic* e URLs
-    const re = /(\*\*(.+?)\*\*|\*(.+?)\*|https?:\/\/[^\s\)\]\>"']+)/g;
-    let last = 0, match;
-    while ((match = re.exec(text)) !== null) {
-        if (match.index > last) {
-            fragment.appendChild(document.createTextNode(text.slice(last, match.index)));
-        }
-        if (match[0].startsWith('**')) {
-            const b = document.createElement('strong');
-            b.textContent = match[2];
-            fragment.appendChild(b);
-        } else if (match[0].startsWith('*')) {
-            const em = document.createElement('em');
-            em.textContent = match[3];
-            fragment.appendChild(em);
-        } else {
-            const a = document.createElement('a');
-            a.href = match[0]; a.textContent = match[0];
-            a.target = '_blank'; a.rel = 'noopener noreferrer';
-            fragment.appendChild(a);
-        }
-        last = match.index + match[0].length;
+function fallbackCopy(text, onSuccess) {
+    const ta      = document.createElement('textarea');
+    ta.value      = text;
+    ta.style.cssText = 'position:fixed;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        onSuccess();
+    } catch (e) {
+        console.error('[Tess] Falha ao copiar:', e);
     }
-    if (last < text.length) {
-        fragment.appendChild(document.createTextNode(text.slice(last)));
-    }
-    return fragment;
+    document.body.removeChild(ta);
 }
 
 // ─── Mensagens ───────────────────────────────────────────────────────────────
@@ -178,10 +303,10 @@ function appendMessage(role, content) {
     const row    = document.createElement('div');
     row.className = 'msg-row ' + role;
     const label  = document.createElement('div');
-    label.className  = 'msg-label';
+    label.className   = 'msg-label';
     label.textContent = role === 'user' ? 'Você' : 'Tess AI';
     const bubble = document.createElement('div');
-    bubble.className = 'msg-bubble';
+    bubble.className  = 'msg-bubble';
     if (role === 'user') {
         bubble.textContent = content;
     } else {
@@ -212,7 +337,7 @@ function appendToolNotice(tool, args) {
     row.className = 'msg-row tool';
     const bubble = document.createElement('div');
     bubble.className  = 'msg-bubble';
-    bubble.textContent = `🔧 A executar ferramenta: ${tool}${args ? ' → ' + args : ''}`;
+    bubble.textContent = '\u{1F527} A executar ferramenta: ' + tool + (args ? ' \u2192 ' + args : '');
     row.appendChild(bubble);
     messagesEl.appendChild(row);
     scrollBottom();
@@ -223,7 +348,7 @@ function beginAssistantBubble() {
     const row    = document.createElement('div');
     row.className = 'msg-row assistant';
     const label  = document.createElement('div');
-    label.className  = 'msg-label';
+    label.className   = 'msg-label';
     label.textContent = 'Tess AI';
     assistantBubble   = document.createElement('div');
     assistantBubble.className = 'msg-bubble';
@@ -239,19 +364,14 @@ function appendChunk(text) {
     const thinking = assistantBubble.querySelector('.thinking');
     if (thinking) {
         assistantBubble.textContent = '';
-        // guarda o texto bruto no dataset para o histórico
         assistantBubble.dataset.raw = '';
     }
     const cursor = assistantBubble.querySelector('.cursor');
     if (cursor) cursor.remove();
 
-    // Acumula o texto bruto
     assistantBubble.dataset.raw = (assistantBubble.dataset.raw ?? '') + text;
-
-    // Adiciona o texto como nó de texto (seguro)
     assistantBubble.appendChild(document.createTextNode(text));
 
-    // Re-adiciona o cursor
     const newCursor = document.createElement('span');
     newCursor.className = 'cursor';
     assistantBubble.appendChild(newCursor);
@@ -294,7 +414,7 @@ function finalizeAssistant() {
         for (const match of toolMatches) {
             vscode.postMessage({ type: 'toolCall', tool: match[1], args: match[2] ?? null });
         }
-        return; // não guarda no histórico ainda — aguarda resultado da ferramenta
+        return;
     }
 
     // ── Resposta normal — re-renderiza com markdown ─────────────────────────
@@ -312,9 +432,9 @@ function finalizeAssistant() {
 // ─── Estado do input ─────────────────────────────────────────────────────────
 
 function setWaiting(val) {
-    waiting              = val;
-    inputEl.disabled     = val;
-    sendBtn.textContent  = val ? 'Parar' : 'Enviar';
+    waiting                  = val;
+    inputEl.disabled         = val;
+    sendBtn.textContent      = val ? 'Parar' : 'Enviar';
     sendBtn.style.background = val ? 'var(--vscode-errorForeground)' : '';
     sendBtn.style.color      = val ? 'white' : '';
 }
@@ -343,10 +463,10 @@ function send() {
     actualTokens = null;
     updateContextMeter();
     vscode.postMessage({
-        type: 'send',
+        type:    'send',
         userText: text,
-        model: modelSelect.value,
-        history: history.slice(0, -1)
+        model:    modelSelect.value,
+        history:  history.slice(0, -1)
     });
 }
 
@@ -367,19 +487,20 @@ codeBtn.addEventListener('click', () => vscode.postMessage({ type: 'pickFile' })
 modelSelect.addEventListener('change', updateContextMeter);
 
 clearBtn.addEventListener('click', () => {
-    history      = [];
-    actualTokens = null;
+    history         = [];
+    actualTokens    = null;
     assistantBubble = null;
     [...messagesEl.children].forEach(el => { if (el.id !== 'watermark') el.remove(); });
     const emptyDiv = document.createElement('div');
     emptyDiv.id = 'empty';
     emptyDiv.style.cssText = 'margin:auto;text-align:center;color:var(--vscode-descriptionForeground);font-size:13px;line-height:2';
-    emptyDiv.innerHTML = 'Olá! Como posso ajudar?<br><small>O código do editor activo é incluído automaticamente.</small>';
+    emptyDiv.innerHTML = 'Ol\u00E1! Como posso ajudar?<br><small>O c\u00F3digo do editor activo \u00E9 inclu\u00EDdo automaticamente.</small>';
     messagesEl.appendChild(emptyDiv);
     watermarkEl.classList.remove('hidden');
     setWaiting(false);
     updateContextMeter();
     saveHistory();
+    vscode.postMessage({ type: 'newChat' });
 });
 
 // ─── Mensagens da extensão (postMessage) ─────────────────────────────────────
@@ -419,24 +540,23 @@ window.addEventListener('message', ({ data }) => {
             break;
 
         case 'toolCall':
-            // Mostra notificação visual da ferramenta a ser executada
             appendToolNotice(data.tool, data.args);
             break;
 
         case 'toolResult':
-            // Injeta o resultado da ferramenta no histórico e continua a conversa
             history.push({
-                role: 'user',
-                content: `[Resultado da ferramenta ${data.tool}${data.args ? ': ' + data.args : ''}]\n\n${data.result}`
+                role:    'user',
+                content: '[Resultado da ferramenta ' + data.tool
+                    + (data.args ? ': ' + data.args : '') + ']\n\n' + data.result
             });
             setWaiting(true);
             beginAssistantBubble();
             vscode.postMessage({
-                type: 'send',
+                type:    'send',
                 userText: '',
-                model: modelSelect.value,
-                history: history.slice(0, -1),
-                isTool: true
+                model:    modelSelect.value,
+                history:  history.slice(0, -1),
+                isTool:   true
             });
             break;
 
@@ -445,7 +565,7 @@ window.addEventListener('message', ({ data }) => {
                 const snippet = '```' + data.code.language + '\n' + data.code.code + '\n```';
                 inputEl.value = inputEl.value ? inputEl.value + '\n\n' + snippet : snippet;
             } else {
-                appendError('Nenhum editor activo. Abra um ficheiro de código primeiro.');
+                appendError('Nenhum editor activo. Abra um ficheiro de c\u00F3digo primeiro.');
             }
             autoResize();
             inputEl.focus();
@@ -463,14 +583,14 @@ window.addEventListener('message', ({ data }) => {
             break;
 
         case 'notConfigured':
-            configured           = false;
-            inputEl.disabled     = true;
-            sendBtn.disabled     = true;
-            codeBtn.disabled     = true;
+            configured       = false;
+            inputEl.disabled = true;
+            sendBtn.disabled = true;
+            codeBtn.disabled = true;
             {
                 const emptyEl = document.getElementById('empty');
-                const msg = 'Configure a sua ligação à Tess antes de continuar.<br>'
-                    + '<small>Ctrl+, → pesquise <strong>tess</strong> → preencha <em>API Key</em> e <em>Agent ID</em></small>';
+                const msg = 'Configure a sua liga\u00E7\u00E3o \u00E0 Tess antes de continuar.<br>'
+                    + '<small>Ctrl+, \u2192 pesquise <strong>tess</strong> \u2192 preencha <em>API Key</em> e <em>Agent ID</em></small>';
                 if (emptyEl) {
                     emptyEl.innerHTML = msg;
                 } else {
@@ -495,7 +615,7 @@ window.addEventListener('message', ({ data }) => {
                 const banner  = document.getElementById('not-configured-banner');
                 if (banner) banner.remove();
                 const emptyEl = document.getElementById('empty');
-                if (emptyEl) emptyEl.innerHTML = 'Olá! Como posso ajudar?<br><small>O código do editor activo é incluído automaticamente.</small>';
+                if (emptyEl) emptyEl.innerHTML = 'Ol\u00E1! Como posso ajudar?<br><small>O c\u00F3digo do editor activo \u00E9 inclu\u00EDdo automaticamente.</small>';
             }
             if (data.models === null) {
                 modelRowEl.classList.add('hidden');
@@ -503,7 +623,7 @@ window.addEventListener('message', ({ data }) => {
                 modelRowEl.classList.remove('hidden');
                 const current = modelSelect.value;
                 modelSelect.innerHTML = data.models
-                    .map(m => `<option value="${m.id}"${m.id === current ? ' selected' : ''}>${m.label}</option>`)
+                    .map(m => '<option value="' + m.id + '"' + (m.id === current ? ' selected' : '') + '>' + m.label + '</option>')
                     .join('');
                 if (!data.models.find(m => m.id === current)) modelSelect.selectedIndex = 0;
                 updateContextMeter();
@@ -515,6 +635,14 @@ window.addEventListener('message', ({ data }) => {
             watermarkEl.classList.add('hidden');
             for (const msg of history) { appendMessage(msg.role, msg.content); }
             if (data.model) modelSelect.value = data.model;
+            updateContextMeter();
+            break;
+
+        case 'loadSession':
+            history = data.data.messages.map(m => ({ role: m.role, content: m.content }));
+            [...messagesEl.children].forEach(el => { if (el.id !== 'watermark') el.remove(); });
+            watermarkEl.classList.add('hidden');
+            for (const msg of history) { appendMessage(msg.role, msg.content); }
             updateContextMeter();
             break;
     }

@@ -58,6 +58,11 @@
           "id": "fileTreeView",
           "name": "Ficheiros do Projecto",
           "type": "tree"
+        },
+        {
+          "id": "tess.historyView",
+          "name": "Histórico",
+          "type": "tree"
         }
       ]
     },
@@ -74,6 +79,29 @@
         "command": "fileTree.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "tess.refreshHistory",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tess.deleteSession",
+        "title": "Apagar conversa",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "tess.renameSession",
+        "title": "Renomear conversa",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "tess.clearHistory",
+        "title": "Tis: Limpar histórico"
+      },
+      {
+        "command": "tess.loadSession",
+        "title": "Carregar conversa"
       }
     ],
     "menus": {
@@ -89,6 +117,28 @@
           "command": "fileTree.refresh",
           "when": "view == fileTreeView",
           "group": "navigation"
+        },
+        {
+          "command": "tess.refreshHistory",
+          "when": "view == tess.historyView",
+          "group": "navigation"
+        },
+        {
+          "command": "tess.clearHistory",
+          "when": "view == tess.historyView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "tess.renameSession",
+          "when": "viewItem == historyItem",
+          "group": "1_edit@1"
+        },
+        {
+          "command": "tess.deleteSession",
+          "when": "viewItem == historyItem",
+          "group": "1_edit@2"
         }
       ]
     },
@@ -121,27 +171,3 @@
     "@vscode/vsce": "^2.22.0"
   }
 }
-
-
-// Adicionar em "views" > "tis-sidebar":
-{
-    "id": "tess.historyView",
-    "name": "Histórico",
-    "type": "tree"
-}
-
-// Adicionar em "commands":
-{ "command": "tess.refreshHistory", "title": "Refresh", "icon": "$(refresh)" },
-{ "command": "tess.deleteSession",  "title": "Apagar conversa", "icon": "$(trash)" },
-{ "command": "tess.renameSession",  "title": "Renomear conversa", "icon": "$(edit)" },
-{ "command": "tess.clearHistory",   "title": "Tis: Limpar histórico" },
-{ "command": "tess.loadSession",    "title": "Carregar conversa" }
-
-// Adicionar em "menus":
-"view/title": [
-    { "command": "tess.refreshHistory", "when": "view == tess.historyView", "group": "navigation" },
-    { "command": "tess.clearHistory",   "when": "view == tess.historyView", "group": "navigation" }
-],
-"view/item/context": [
-    { "command": "tess.renameSession", "when": "viewItem == historyItem", "group": "1_edit@1" },
-    { "command": "tess.deleteSession", "when": "viewItem == historyItem", "group": "1_edit@2" }

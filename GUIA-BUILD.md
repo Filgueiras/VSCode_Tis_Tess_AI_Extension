@@ -4,7 +4,9 @@
 
 ```bash
 # 1. Actualizar a versão (MAJOR.MINOR.PATCH — ver tabela abaixo)
-npm version 2.X.X --no-git-tag-version
+npm version 2.3.X --no-git-tag-version
+
+IMPORTANTE: precisa estar coerente com o package.json do projecto (última versão 2.3.0)
 
 # 2. Gerar o .vsix
 npx vsce package

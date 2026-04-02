@@ -64,7 +64,7 @@ class TessChatViewProvider {
             retainContextWhenHidden: true,
             localResourceRoots: [
                 this._context.extensionUri,
-                vscode.Uri.joinPath(this._context.extensionUri, 'src', 'webview')
+                vscode.Uri.joinPath(this._context.extensionUri, 'media', 'webview')
             ]
         };
 
@@ -72,10 +72,10 @@ class TessChatViewProvider {
             vscode.Uri.joinPath(this._context.extensionUri, 'tis_vector_vscode.svg')
         );
         const cssUri = webviewView.webview.asWebviewUri(
-            vscode.Uri.joinPath(this._context.extensionUri, 'src', 'webview', 'webview.css')
+            vscode.Uri.joinPath(this._context.extensionUri, 'media', 'webview', 'webview.css')
         );
         const scriptUri = webviewView.webview.asWebviewUri(
-            vscode.Uri.joinPath(this._context.extensionUri, 'src', 'webview', 'webview-script.js')
+            vscode.Uri.joinPath(this._context.extensionUri, 'media', 'webview', 'webview-script.js')
         );
 
         webviewView.webview.html = buildHtml(logoUri, cssUri, scriptUri, MODELS, MODEL_LIMITS);

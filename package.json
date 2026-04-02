@@ -35,7 +35,7 @@
   "activationEvents": [
     "onView:tess.chatView"
   ],
-  "main": "./extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -161,13 +161,17 @@
     }
   },
   "scripts": {
-    "package": "npx vsce package",
-    "install-ext": "npx vsce package && code --install-extension tis-tess-*.vsix --force"
+    "copy-assets": "copyfiles -u 1 src/webview/webview.css src/webview/webview-script.js media",
+    "build": "npm run copy-assets && esbuild extension.js --bundle --outfile=dist/extension.js --external:vscode --platform=node --target=node18",
+    "package": "npm run build && npx vsce package",
+    "install-ext": "npm run package && code --install-extension tis-tess-*.vsix --force"
   },
   "dependencies": {
     "axios": "^1.6.0"
   },
   "devDependencies": {
-    "@vscode/vsce": "^2.22.0"
+    "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.27.4",
+    "copyfiles": "^2.4.1"
   }
 }

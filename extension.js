@@ -3,7 +3,7 @@
 
 const vscode = require('vscode');
 const { TessChatViewProvider } = require('./src/provider');
-const { registerFileTree }     = require('./src/fileTree');
+const { registerFileTree }     = require('./src/filetree');
 const chatHistory              = require('./src/chatHistory');
 const { registerHistoryView }  = require('./src/chatHistoryView');
 

@@ -1,42 +1,77 @@
 # ADR-012 — WebView com ficheiros estáticos (CSS + JS externos)
 
-**Estado:** Aceite
-**Data:** 2026-04-01
+**Estado:** Aceite (revisto em 2026-04-02)
+**Data inicial:** 2026-04-01
+**Revisão:** 2026-04-02 — migração de `src/webview/` para `media/webview/`
 **Supersede (parcialmente):** ADR-002 — a consequência "HTML embutido em extension.js" deixa de ser válida
 
 ## Contexto
 
-Após a decisão de usar `WebviewViewProvider` (ADR-002), o HTML do WebView estava inteiramente embutido numa template string dentro de `buildHtml()` em `extension.js`. CSS e JavaScript do chat (400+ linhas no total) ficavam inline, sem syntax highlighting, sem linting e sem separação de responsabilidades. Qualquer edição à UI exigia localizar a linha correcta dentro de uma string gigante.
+Após a decisão de usar `WebviewViewProvider` (ADR-002), o HTML do WebView estava inteiramente embutido numa template string dentro de `buildHtml()` em `extension.js`. CSS e JavaScript do chat (400+ linhas no total) ficavam inline, sem syntax highlighting, sem linting e sem separação de responsabilidades.
+
+Numa segunda iteração, os ficheiros foram separados em `src/webview/`. Porém, o `.vscodeignore` exclui `src/**` na totalidade (decisão do ADR-016, para que o bundle `dist/extension.js` seja o único entry point incluído no `.vsix`). O `esbuild` faz bundle do código Node.js da extensão mas **não empacota ficheiros estáticos servidos via `asWebviewUri()`** — esses têm de existir como ficheiros no `.vsix`.
+
+A solução foi mover os activos do WebView para `media/webview/`, pasta que não está excluída pelo `.vscodeignore`.
 
 ## Decisão
 
-Separar CSS e JavaScript em ficheiros estáticos servidos via `asWebviewUri()`:
+### Estrutura de ficheiros
 
-- `src/webview/webview.css` — todos os estilos do painel
-- `src/webview/webview-script.js` — toda a lógica do chat (estado, rendering, comunicação com a extensão)
-- `src/webview.js` — apenas o HTML estrutural em `buildHtml(logoUri, cssUri, scriptUri, models, modelLimits)`
+```
+src/webview/          ← source (editável, não vai no .vsix)
+  webview.css
+  webview-script.js
 
-Os URIs são gerados em `provider.js`:
+media/webview/        ← destino copiado pelo build (vai no .vsix)
+  webview.css
+  webview-script.js
+```
+
+O script `copy-assets` no `package.json` copia os ficheiros na fase de build:
+
+```json
+"copy-assets": "copyfiles -u 1 src/webview/webview.css src/webview/webview-script.js media"
+```
+
+> **Pitfall crítico — flag `-u` do copyfiles:**
+> - `-u 1` remove um nível (`src/`) → ficheiros ficam em `media/webview/` ✓
+> - `-u 2` remove dois níveis (`src/` + `webview/`) → ficheiros ficam em `media/` directamente ✗
+>
+> Com `-u 2` o WebView carrega silenciosamente sem CSS nem scripts (sem erros visíveis na extensão).
+
+### Paths em `provider.js`
 
 ```javascript
-const cssUri    = webviewView.webview.asWebviewUri(
-    vscode.Uri.joinPath(this._context.extensionUri, 'src', 'webview', 'webview.css')
+webviewView.webview.options = {
+    enableScripts: true,
+    localResourceRoots: [
+        this._context.extensionUri,
+        vscode.Uri.joinPath(this._context.extensionUri, 'media', 'webview')
+    ]
+};
+
+const cssUri = webviewView.webview.asWebviewUri(
+    vscode.Uri.joinPath(this._context.extensionUri, 'media', 'webview', 'webview.css')
 );
 const scriptUri = webviewView.webview.asWebviewUri(
-    vscode.Uri.joinPath(this._context.extensionUri, 'src', 'webview', 'webview-script.js')
+    vscode.Uri.joinPath(this._context.extensionUri, 'media', 'webview', 'webview-script.js')
 );
 ```
 
-O `localResourceRoots` é configurado para `src/webview/` para que o WebView tenha acesso a esses ficheiros.
+### Módulo de HTML
+
+`src/webview.js` expõe apenas `buildHtml(logoUri, cssUri, scriptUri, models, modelLimits)` — recebe os URIs calculados em `provider.js` e gera o HTML estrutural com o CSP correcto.
 
 ## Alternativas rejeitadas
 
-- **Framework de frontend (React/Svelte/Vue):** Exigiria bundler dedicado para o webview e aumentaria o tamanho do `.vsix` e a complexidade do setup.
-- **Manter tudo inline:** Insustentável — sem syntax highlighting, sem linting, edições difíceis de localizar.
+- **Framework de frontend (React/Svelte/Vue):** Exigiria bundler dedicado para o webview e aumentaria a complexidade do setup.
+- **Manter tudo inline:** Insustentável — sem syntax highlighting, sem linting.
+- **Manter em `src/webview/` e excluir apenas `src/*.js`:** Tornaria o `.vscodeignore` frágil e inconsistente com a regra `src/**`.
 
 ## Consequências
 
-- Syntax highlighting e linting funcionam nos ficheiros estáticos — o editor trata `webview-script.js` como JavaScript normal.
-- O `buildHtml()` recebe `models` e `MODEL_LIMITS` como parâmetros para gerar as `<option>` do selector e injectar os limites como `window.MODEL_LIMITS` — o script lê estes valores em runtime.
-- O CSP (Content Security Policy) é declarado no `<meta>` do HTML em `webview.js`, restringindo scripts e estilos apenas aos ficheiros autorizados.
-- O `localResourceRoots` em `provider.js` deve incluir `src/webview/` — sem isso o VS Code bloqueia o carregamento dos ficheiros.
+- Syntax highlighting e linting funcionam nos ficheiros source em `src/webview/`.
+- O `buildHtml()` recebe `models` e `MODEL_LIMITS` como parâmetros para gerar as `<option>` do selector e injectar os limites como `window.MODEL_LIMITS`.
+- O CSP (Content Security Policy) é declarado no `<meta>` do HTML, restringindo scripts e estilos apenas aos ficheiros autorizados.
+- **`media/` não deve ser adicionado ao `.vscodeignore`** — é o único lugar onde os activos estáticos do WebView residem no `.vsix`.
+- O `copy-assets` é executado automaticamente pelo script `build` (`npm run build`), pelo que nunca é necessário correr separadamente.

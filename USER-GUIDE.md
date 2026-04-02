@@ -90,7 +90,7 @@ O painel pode ser arrastado para qualquer posição na barra lateral, ou movido 
 
 ## 4. Escolher o modelo
 
-No topo do painel existe um selector de modelo:
+No topo do painel, se o seu agente permitir múltiplos modelos, ficará visível um selector de modelos:
 
 ```
 Modelo: [Claude Sonnet 4.5 ▾]
@@ -135,7 +135,7 @@ A extensão enriquece cada mensagem com contexto do seu projecto, de forma silen
 
 Na **primeira mensagem** de cada sessão, é injectada automaticamente a lista de todos os ficheiros do projecto (até 300), excluindo pastas como `node_modules`, `.git` e `dist`.
 
-O agente fica a saber a estrutura do projecto sem que precise de a descrever.
+O agente fica a saber a estrutura do projecto sem que precise de a descrever. Mas você sempre pode enviar a árvore do projecto para seu agente através do botão "Contexto do projecto".
 
 ### Código do editor activo (todas as mensagens)
 
@@ -151,6 +151,11 @@ Isto significa que pode perguntar directamente "o que faz esta função?" sem pr
 ## 7. Adicionar ficheiros manualmente
 
 O botão **📁 Adicionar ficheiros** serve para incluir o **conteúdo completo** de ficheiros que não estão abertos no editor.
+Ele não cria na sua pasta, mas sempre pode ler seus documentos se tu o indicar qual (a pasta do projecto ele já conhecerá automaticamente).
+Isso é o equivalente a dar a permissão para que ele veja os teuis documentos.
+Nota: o agente cria novos documentos, mas gera links para download que você pode clicar e copiar o conteúdo.
+Isso nós vamos deixar mais dinâmico nas próximas versões, mas como POC achamos o suficiente (lembre do manifesto hypercoding: se a IA
+fizer um monte de coisas e não tiveres contexto, só ela quem sabnerá como funciona teu projecto).
 
 ### Quando usar
 

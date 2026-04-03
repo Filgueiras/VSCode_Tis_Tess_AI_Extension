@@ -15,6 +15,7 @@ Ambas são executadas automaticamente por `npm run build`.
 
 ```bash
 # 1. Actualizar a versão (MAJOR.MINOR.PATCH — ver tabela abaixo)
+# Isso já vai alterar a versão no package.json (não precisa alterar manualmente)
 npm version 2.X.Y --no-git-tag-version
 
 # 2. Gerar o .vsix (faz build + empacota)
@@ -26,12 +27,16 @@ O ficheiro gerado segue o padrão `tis-tess-{version}.vsix`.
 ---
 
 ## Scripts disponíveis
-
-| Script | Comando | Descrição |
-|---|---|---|
-| `build` | `npm run build` | Copia activos para `media/` + bundle esbuild → `dist/extension.js` |
-| `package` | `npm run package` | Build completo + gera `.vsix` |
+______________________________________________________________________________________
+| Script        | Comando               | Descrição                                  |
+|---------------|-----------------------|--------------------------------------------|
+| `build`       | `npm run build`       | Copia activos para `media/`                |
+|               !                       |+ bundle esbuild → `dist/extension.js`      |
+|------------------------------------------------------------------------------------|
+| `package`     | `npm run package`     | Build completo + gera `.vsix`              |
+|------------------------------------------------------------------------------------|
 | `install-ext` | `npm run install-ext` | Build + package + instala no VS Code local |
+|------------------------------------------------------------------------------------|
 
 ---
 
@@ -64,14 +69,16 @@ tis-tess/
 ## Anatomia do `.vscodeignore`
 
 ```ignore
-node_modules/**   # bundle é auto-contido, node_modules não é necessário
-src/**            # substituído pelo bundle em dist/
+node_modules/**          # bundle é auto-contido, node_modules não é necessário
+src/**                   # substituído pelo bundle em dist/
 docs/**
 *.vsix
 .vscode/**
 .git/**
 .gitignore
 token.md
+marco_temp-dev_notes.md  # notas pessoais de desenvolvimento
+.claude/**               # configurações do Claude Code
 
 # dist/ NÃO está excluído — é o entry point carregado pelo VS Code
 # media/ NÃO está excluída — contém os activos estáticos do WebView
@@ -137,7 +144,11 @@ npm run build
 
 ### Extensão instala mas não activa
 
-**Causa mais provável:** `dist/extension.js` ausente ou desactualizado.
+**Causa 1 — `"main"` no `package.json` aponta para o ficheiro errado.**
+
+O campo `"main"` deve ser `"./dist/extension.js"` (o bundle). Se apontar para `"./extension.js"` (o source raiz), o VS Code carrega esse ficheiro que faz `require('./src/...')` — mas `src/` está excluído do `.vsix` e a extensão falha silenciosamente.
+
+**Causa 2 — `dist/extension.js` ausente ou desactualizado.**
 
 ```bash
 npm run build
@@ -156,11 +167,11 @@ npm run package
 
 ```bash
 # macOS / Linux
-unzip -l tis-tess-2.3.0.vsix | grep -E "(dist|media)"
+unzip -l tis-tess-*.vsix | grep -E "(dist|media)"
 
 # Windows (PowerShell)
-Rename-Item tis-tess-2.3.0.vsix tis-tess-2.3.0.zip
-Expand-Archive tis-tess-2.3.0.zip -DestinationPath ./vsix-inspect
+Rename-Item tis-tess-*.vsix tis-tess.zip
+Expand-Archive tis-tess.zip -DestinationPath ./vsix-inspect
 ```
 
 Deve conter `extension/dist/extension.js` e `extension/media/webview/webview.css`.
@@ -175,13 +186,12 @@ Deve conter `extension/dist/extension.js` e `extension/media/webview/webview.css
 | macOS   | `~/.vscode/extensions/` |
 | Linux   | `~/.vscode/extensions/` |
 
-Cada extensão ocupa uma subpasta: `tis-angola.tis-tess-2.3.0`
+Cada extensão ocupa uma subpasta: `tis-angola.tis-tess-{version}`
 
 ---
 
 ## Avisos normais do vsce (podem ser ignorados)
 
 ```
-WARNING  A 'repository' field is missing from the 'package.json' manifest file.
 WARNING  LICENSE.md, LICENSE.txt or LICENSE not found
 ```

@@ -11,3 +11,8 @@ docs/**
 .git/**
 .gitignore
 token.md
+
+# Ficheiros pessoais / temporários
+marco_temp-dev_notes.md
+old_extension.js
+.claude/**

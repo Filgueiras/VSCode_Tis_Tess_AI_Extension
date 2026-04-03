@@ -15622,7 +15622,7 @@ var require_models = __commonJS({
 var require_webview = __commonJS({
   "src/webview.js"(exports2, module2) {
     "use strict";
-    function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits) {
+    function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits, cspSource, nonce) {
       const modelOptions = models.map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
       const limitsJson = JSON.stringify(modelLimits);
       return `<!DOCTYPE html>
@@ -15632,9 +15632,9 @@ var require_webview = __commonJS({
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
-                 style-src 'unsafe-inline' https://*.vscode-cdn.net;
-                 script-src 'unsafe-inline' https://*.vscode-cdn.net;
-                 img-src data: https://*.vscode-cdn.net;
+                 style-src ${cspSource} 'unsafe-inline';
+                 script-src ${cspSource} 'nonce-${nonce}';
+                 img-src ${cspSource} data:;
                  connect-src https://api.tess.im;">
   <title>Tess AI</title>
   <link rel="stylesheet" href="${cssUri}">
@@ -15683,11 +15683,11 @@ var require_webview = __commonJS({
     <div id="hint">Enter para enviar \xB7 Shift+Enter para nova linha</div>
   </div>
 
-  <!-- \u2500\u2500 Vari\xE1veis globais para o script \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
-  <script>window.MODEL_LIMITS = ${limitsJson};</script>
+  <!-- \u2500\u2500 Vari\xE1veis globais \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <script nonce="${nonce}">window.MODEL_LIMITS = ${limitsJson};</script>
 
   <!-- \u2500\u2500 Script principal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
-  <script src="${scriptUri}"></script>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
 
 </body>
 </html>`;
@@ -15863,7 +15863,6 @@ var require_provider = __commonJS({
       _abortController = null;
       _lastEditor = null;
       _activeSessionId = null;
-      _historyProvider = null;
       constructor(context) {
         this._context = context;
         context.subscriptions.push(
@@ -15871,20 +15870,6 @@ var require_provider = __commonJS({
             if (editor) this._lastEditor = editor;
           })
         );
-      }
-      // ── Métodos públicos chamados pelo extension.js ──────────────────────────
-      setHistoryProvider(historyProvider) {
-        this._historyProvider = historyProvider;
-      }
-      loadSession(session) {
-        if (!this._view) return;
-        this._activeSessionId = session.id;
-        const lastModel = [...session.messages].reverse().find((m) => m.role === "assistant" && m.model)?.model ?? "auto";
-        this._view.webview.postMessage({
-          type: "restoreHistory",
-          history: session.messages,
-          model: lastModel
-        });
       }
       insertCode() {
         if (!this._view) return;
@@ -15905,8 +15890,9 @@ var require_provider = __commonJS({
             vscode2.Uri.joinPath(this._context.extensionUri, "media", "webview")
           ]
         };
+        const nonce = require("crypto").randomBytes(16).toString("hex");
         const logoUri = webviewView.webview.asWebviewUri(
-          vscode2.Uri.joinPath(this._context.extensionUri, "tis_vector_vscode.svg")
+          vscode2.Uri.joinPath(this._context.extensionUri, "TIS_vector_vscode.svg")
         );
         const cssUri = webviewView.webview.asWebviewUri(
           vscode2.Uri.joinPath(this._context.extensionUri, "media", "webview", "webview.css")
@@ -15914,7 +15900,15 @@ var require_provider = __commonJS({
         const scriptUri = webviewView.webview.asWebviewUri(
           vscode2.Uri.joinPath(this._context.extensionUri, "media", "webview", "webview-script.js")
         );
-        webviewView.webview.html = buildHtml(logoUri, cssUri, scriptUri, MODELS, MODEL_LIMITS);
+        webviewView.webview.html = buildHtml(
+          logoUri,
+          cssUri,
+          scriptUri,
+          MODELS,
+          MODEL_LIMITS,
+          webviewView.webview.cspSource,
+          nonce
+        );
         webviewView.webview.onDidReceiveMessage(async (msg) => {
           await this._handleMessage(msg);
         });
@@ -15940,8 +15934,6 @@ var require_provider = __commonJS({
           case "toolCall":
             await this._handleToolCall(msg);
             break;
-          // saveHistory substituído pela integração directa no _handleSend
-          // mantido por compatibilidade com versões antigas do webview-script.js
           case "saveHistory":
             this._context.workspaceState.update("tess.history", msg.history);
             this._context.workspaceState.update("tess.model", msg.model);
@@ -15949,35 +15941,47 @@ var require_provider = __commonJS({
           case "newChat":
             this._activeSessionId = null;
             break;
-          case "openHistory":
-            await this._handleOpenHistory();
+          case "saveFile":
+            vscode2.commands.executeCommand("tess.saveFile", {
+              filename: msg.filename,
+              content: msg.content
+            });
+            break;
+          // ── Histórico inline (drawer no WebView) ─────────────────────
+          case "getHistory":
+            this._sendHistoryList();
+            break;
+          case "loadSession":
+            this._loadSessionById(msg.id);
             break;
         }
       }
-      async _handleOpenHistory() {
+      // ── Histórico inline ─────────────────────────────────────────────────────
+      _sendHistoryList() {
         const sessions = chatHistory2.listSessions();
-        if (sessions.length === 0) {
-          vscode2.window.showInformationMessage("N\xE3o h\xE1 conversas guardadas.");
-          return;
-        }
         const items = sessions.map((s) => ({
-          label: s.title,
-          description: _formatSessionDate(s.updatedAt),
-          id: s.id
+          id: s.id,
+          title: s.title,
+          date: _formatSessionDate(s.updatedAt),
+          model: s.model ?? "auto"
         }));
-        const picked = await vscode2.window.showQuickPick(items, {
-          placeHolder: "Selecione uma conversa para retomar",
-          matchOnDescription: true
-        });
-        if (picked) {
-          const session = chatHistory2.getSession(picked.id);
-          if (session) this.loadSession(session);
-        }
+        this._view?.webview.postMessage({ type: "historyList", sessions: items });
       }
+      _loadSessionById(id) {
+        const session = chatHistory2.getSession(id);
+        if (!session) return;
+        this._activeSessionId = session.id;
+        const lastModel = [...session.messages].reverse().find((m) => m.role === "assistant" && m.model)?.model ?? "auto";
+        this._view?.webview.postMessage({
+          type: "restoreHistory",
+          history: session.messages,
+          model: lastModel
+        });
+      }
+      // ── Send ─────────────────────────────────────────────────────────────────
       async _handleSend(msg) {
         if (!this._activeSessionId) {
           this._activeSessionId = chatHistory2.createSession(msg.userText, msg.model);
-          this._historyProvider?.refresh();
         }
         if (msg.userText) {
           chatHistory2.appendMessage(this._activeSessionId, "user", msg.userText, msg.model);
@@ -15995,7 +15999,6 @@ var require_provider = __commonJS({
           );
           if (response) {
             chatHistory2.appendMessage(this._activeSessionId, "assistant", response, msg.model);
-            this._historyProvider?.refresh();
           }
         } catch (err) {
           if (err.name !== "AbortError") {
@@ -16051,253 +16054,14 @@ var require_provider = __commonJS({
   }
 });
 
-// src/filetree.js
-var require_filetree = __commonJS({
-  "src/filetree.js"(exports2, module2) {
-    var vscode2 = require("vscode");
-    var path = require("path");
-    var fs = require("fs");
-    var FileTreeItem = class extends vscode2.TreeItem {
-      /**
-       * @param {string} label - Display name
-       * @param {vscode.Uri} resourceUri - Full URI of the resource
-       * @param {vscode.TreeItemCollapsibleState} collapsibleState
-       */
-      constructor(label, resourceUri, collapsibleState) {
-        super(label, collapsibleState);
-        this.resourceUri = resourceUri;
-        this.tooltip = resourceUri.fsPath;
-        const isDirectory = collapsibleState !== vscode2.TreeItemCollapsibleState.None;
-        this.iconPath = isDirectory ? vscode2.ThemeIcon.Folder : vscode2.ThemeIcon.File;
-        if (!isDirectory) {
-          this.command = {
-            command: "vscode.open",
-            title: "Open File",
-            arguments: [resourceUri]
-          };
-        }
-        this.contextValue = isDirectory ? "folder" : "file";
-      }
-    };
-    var FileTreeProvider = class {
-      constructor() {
-        this._onDidChangeTreeData = new vscode2.EventEmitter();
-        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-      }
-      /**
-       * Triggers a full tree refresh.
-       */
-      refresh() {
-        this._onDidChangeTreeData.fire(void 0);
-      }
-      /**
-       * @param {FileTreeItem} element
-       * @returns {FileTreeItem}
-       */
-      getTreeItem(element) {
-        return element;
-      }
-      /**
-       * @param {FileTreeItem | undefined} element
-       * @returns {vscode.ProviderResult<FileTreeItem[]>}
-       */
-      getChildren(element) {
-        const workspaceFolders = vscode2.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-          vscode2.window.showInformationMessage("No workspace folder open.");
-          return [];
-        }
-        const dirPath = element ? element.resourceUri.fsPath : workspaceFolders[0].uri.fsPath;
-        return this._readDirectory(dirPath);
-      }
-      /**
-       * Reads a directory and returns its contents as FileTreeItems.
-       * @param {string} dirPath
-       * @returns {FileTreeItem[]}
-       */
-      _readDirectory(dirPath) {
-        let entries;
-        try {
-          entries = fs.readdirSync(dirPath, { withFileTypes: true });
-        } catch (err) {
-          console.error(`[FileTree] Failed to read directory: ${dirPath}`, err);
-          return [];
-        }
-        const dirs = entries.filter((e) => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
-        const files = entries.filter((e) => e.isFile()).sort((a, b) => a.name.localeCompare(b.name));
-        return [...dirs, ...files].map((entry) => {
-          const fullPath = path.join(dirPath, entry.name);
-          const uri = vscode2.Uri.file(fullPath);
-          const collapsibleState = entry.isDirectory() ? vscode2.TreeItemCollapsibleState.Collapsed : vscode2.TreeItemCollapsibleState.None;
-          return new FileTreeItem(entry.name, uri, collapsibleState);
-        });
-      }
-    };
-    function registerFileTree2(context) {
-      const provider = new FileTreeProvider();
-      const treeView = vscode2.window.createTreeView("fileTreeView", {
-        treeDataProvider: provider,
-        showCollapseAll: true
-      });
-      const refreshCommand = vscode2.commands.registerCommand(
-        "fileTree.refresh",
-        () => provider.refresh()
-      );
-      context.subscriptions.push(treeView, refreshCommand);
-      return provider;
-    }
-    module2.exports = {
-      FileTreeItem,
-      FileTreeProvider,
-      registerFileTree: registerFileTree2
-    };
-  }
-});
-
-// src/chatHistoryView.js
-var require_chatHistoryView = __commonJS({
-  "src/chatHistoryView.js"(exports2, module2) {
-    "use strict";
-    var vscode2 = require("vscode");
-    var chatHistory2 = require_chatHistory();
-    var HistoryItem = class extends vscode2.TreeItem {
-      /**
-       * @param {{ id: string, title: string, updatedAt: string }} session
-       */
-      constructor(session) {
-        super(session.title, vscode2.TreeItemCollapsibleState.None);
-        this.id = session.id;
-        this.description = _formatDate(session.updatedAt);
-        this.tooltip = session.title;
-        this.iconPath = new vscode2.ThemeIcon("comment-discussion");
-        this.contextValue = "historyItem";
-        this.command = {
-          command: "tess.loadSession",
-          title: "Carregar conversa",
-          arguments: [session.id]
-        };
-      }
-    };
-    var ChatHistoryProvider = class {
-      constructor() {
-        this._onDidChangeTreeData = new vscode2.EventEmitter();
-        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-      }
-      refresh() {
-        this._onDidChangeTreeData.fire(void 0);
-      }
-      /** @param {HistoryItem} element */
-      getTreeItem(element) {
-        return element;
-      }
-      /** @returns {HistoryItem[]} */
-      getChildren() {
-        const sessions = chatHistory2.listSessions();
-        if (sessions.length === 0) {
-          const empty = new vscode2.TreeItem("Sem conversas guardadas");
-          empty.iconPath = new vscode2.ThemeIcon("info");
-          return [empty];
-        }
-        return sessions.map((s) => new HistoryItem(s));
-      }
-    };
-    function registerHistoryView2(context, onLoadSession) {
-      const provider = new ChatHistoryProvider();
-      const treeView = vscode2.window.createTreeView("tess.historyView", {
-        treeDataProvider: provider,
-        showCollapseAll: false
-      });
-      const cmdRefresh = vscode2.commands.registerCommand(
-        "tess.refreshHistory",
-        () => provider.refresh()
-      );
-      const cmdLoad = vscode2.commands.registerCommand(
-        "tess.loadSession",
-        (sessionId) => {
-          const session = chatHistory2.getSession(sessionId);
-          if (session) onLoadSession(session);
-        }
-      );
-      const cmdDelete = vscode2.commands.registerCommand(
-        "tess.deleteSession",
-        async (item) => {
-          const confirm = await vscode2.window.showWarningMessage(
-            `Apagar conversa "${item.label}"?`,
-            { modal: true },
-            "Apagar"
-          );
-          if (confirm === "Apagar") {
-            chatHistory2.deleteSession(item.id);
-            provider.refresh();
-          }
-        }
-      );
-      const cmdRename = vscode2.commands.registerCommand(
-        "tess.renameSession",
-        async (item) => {
-          const newTitle = await vscode2.window.showInputBox({
-            prompt: "Novo t\xEDtulo da conversa",
-            value: item.label,
-            placeHolder: "T\xEDtulo..."
-          });
-          if (newTitle) {
-            chatHistory2.renameSession(item.id, newTitle);
-            provider.refresh();
-          }
-        }
-      );
-      const cmdClearAll = vscode2.commands.registerCommand(
-        "tess.clearHistory",
-        async () => {
-          const confirm = await vscode2.window.showWarningMessage(
-            "Apagar todo o hist\xF3rico de conversas?",
-            { modal: true },
-            "Apagar tudo"
-          );
-          if (confirm === "Apagar tudo") {
-            chatHistory2.clearAll();
-            provider.refresh();
-          }
-        }
-      );
-      context.subscriptions.push(
-        treeView,
-        cmdRefresh,
-        cmdLoad,
-        cmdDelete,
-        cmdRename,
-        cmdClearAll
-      );
-      return provider;
-    }
-    function _formatDate(isoDate) {
-      const date = new Date(isoDate);
-      const now = /* @__PURE__ */ new Date();
-      const isToday = date.toDateString() === now.toDateString();
-      if (isToday) {
-        return date.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
-      }
-      return date.toLocaleDateString("pt-PT", { day: "2-digit", month: "short" });
-    }
-    module2.exports = { ChatHistoryProvider, registerHistoryView: registerHistoryView2 };
-  }
-});
-
 // extension.js
 var vscode = require("vscode");
 var { TessChatViewProvider } = require_provider();
-var { registerFileTree } = require_filetree();
 var chatHistory = require_chatHistory();
-var { registerHistoryView } = require_chatHistoryView();
 function activate(context) {
-  console.log("[Tess] Extens\xE3o activada");
+  console.log("[Tis.ai & Tess] Extens\xE3o activada");
   chatHistory.init(context);
-  registerFileTree(context);
   const provider = new TessChatViewProvider(context);
-  const historyProvider = registerHistoryView(context, (session) => {
-    provider.loadSession(session);
-  });
-  provider.setHistoryProvider(historyProvider);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       "tess.chatView",
@@ -16310,11 +16074,24 @@ function activate(context) {
     }),
     vscode.commands.registerCommand("tess.openSettings", () => {
       vscode.commands.executeCommand("workbench.action.openSettings", "tess");
+    }),
+    vscode.commands.registerCommand("tess.saveFile", async (args) => {
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+      const uri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(folder + "/" + args.filename),
+        filters: { "All Files": ["*"] }
+      });
+      if (!uri) return;
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(args.content, "utf8"));
+      vscode.window.showInformationMessage("Ficheiro guardado: " + uri.fsPath);
     })
   );
+  setTimeout(() => {
+    vscode.commands.executeCommand("tess.chatView.focus");
+  }, 500);
 }
 function deactivate() {
-  console.log("[Tess] Extens\xE3o desactivada");
+  console.log("[Tis.ai & Tess] Extens\xE3o desactivada");
 }
 module.exports = { activate, deactivate };
 /*! Bundled license information:

@@ -17,7 +17,7 @@ function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits, cspSource, n
                  style-src ${cspSource} 'unsafe-inline';
                  script-src ${cspSource} 'nonce-${nonce}';
                  img-src ${cspSource} data:;
-                 connect-src https://api.tess.im https://tess.im;">
+                 connect-src https://api.tess.im;">
   <title>Tess AI</title>
   <link rel="stylesheet" href="${cssUri}">
 </head>

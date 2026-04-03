@@ -3,29 +3,16 @@
 
 const vscode = require('vscode');
 const { TessChatViewProvider } = require('./src/provider');
-const { registerFileTree }     = require('./src/filetree');
 const chatHistory              = require('./src/chatHistory');
-const { registerHistoryView }  = require('./src/chatHistoryView');
 
 function activate(context) {
     console.log('[Tis.ai & Tess] Extensão activada');
 
-    // 1. Histórico — tem de ser o primeiro
+    // 1. Histórico — inicializa o módulo de persistência
     chatHistory.init(context);
 
-    // 2. Árvore de ficheiros
-    registerFileTree(context);
-
-    // 3. Provider do chat
+    // 2. Provider do chat (único ponto de entrada visual)
     const provider = new TessChatViewProvider(context);
-
-    // 4. Sidebar de histórico
-    const historyProvider = registerHistoryView(context, (session) => {
-        provider.loadSession(session);
-    });
-
-    // 5. Expõe o historyProvider ao provider para ele poder fazer refresh
-    provider.setHistoryProvider(historyProvider);
 
     context.subscriptions.push(
 
@@ -46,7 +33,7 @@ function activate(context) {
 
     );
 
-   // Força o chat a ficar visível assim que a extensão activa (com timeout)
+    // Força o chat a ficar visível assim que a extensão activa
     setTimeout(() => {
         vscode.commands.executeCommand('tess.chatView.focus');
     }, 500);

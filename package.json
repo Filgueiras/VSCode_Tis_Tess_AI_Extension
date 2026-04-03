@@ -33,9 +33,7 @@
     "tis angola"
   ],
   "activationEvents": [
-      "onView:tess.chatView",
-      "onView:fileTreeView",
-      "onView:tess.historyView"
+    "onView:tess.chatView"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -55,16 +53,6 @@
           "id": "tess.chatView",
           "name": "Chat Tis.ai",
           "icon": "tis_vector_vscode.svg"
-        },
-        {
-          "id": "fileTreeView",
-          "name": "Ficheiros do Projecto",
-          "type": "tree"
-        },
-        {
-          "id": "tess.historyView",
-          "name": "Histórico",
-          "type": "tree"
         }
       ]
     },
@@ -76,34 +64,6 @@
       {
         "command": "tess.openSettings",
         "title": "Tis: Abrir Definições"
-      },
-      {
-        "command": "fileTree.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "tess.refreshHistory",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "tess.deleteSession",
-        "title": "Apagar conversa",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "tess.renameSession",
-        "title": "Renomear conversa",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "tess.clearHistory",
-        "title": "Tis: Limpar histórico"
-      },
-      {
-        "command": "tess.loadSession",
-        "title": "Carregar conversa"
       }
     ],
     "menus": {
@@ -112,35 +72,6 @@
           "command": "tess.openChatWithCode",
           "group": "tess@1",
           "when": "editorTextFocus"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "fileTree.refresh",
-          "when": "view == fileTreeView",
-          "group": "navigation"
-        },
-        {
-          "command": "tess.refreshHistory",
-          "when": "view == tess.historyView",
-          "group": "navigation"
-        },
-        {
-          "command": "tess.clearHistory",
-          "when": "view == tess.historyView",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "tess.renameSession",
-          "when": "viewItem == historyItem",
-          "group": "1_edit@1"
-        },
-        {
-          "command": "tess.deleteSession",
-          "when": "viewItem == historyItem",
-          "group": "1_edit@2"
         }
       ]
     },

@@ -20,11 +20,164 @@ const contextLabelEl = document.getElementById('contextLabel');
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
 
-let history         = [];
-let assistantBubble = null;
-let waiting         = false;
-let actualTokens    = null;
-let configured      = false;
+let history           = [];
+let assistantBubble   = null;
+let waiting           = false;
+let actualTokens      = null;
+let configured        = false;
+let historyDrawerOpen = false;
+
+// ─── Drawer de Histórico ─────────────────────────────────────────────────────
+
+function buildHistoryDrawer() {
+    if (document.getElementById('history-drawer')) return;
+
+    const drawer = document.createElement('div');
+    drawer.id = 'history-drawer';
+    drawer.style.cssText = [
+        'position:absolute',
+        'top:0',
+        'left:0',
+        'width:100%',
+        'height:100%',
+        'background:var(--vscode-sideBar-background)',
+        'z-index:100',
+        'display:flex',
+        'flex-direction:column',
+        'transform:translateX(-100%)',
+        'transition:transform 0.2s ease',
+        'border-right:1px solid var(--vscode-panel-border)'
+    ].join(';');
+
+    const header = document.createElement('div');
+    header.style.cssText = [
+        'display:flex',
+        'align-items:center',
+        'justify-content:space-between',
+        'padding:8px 12px',
+        'border-bottom:1px solid var(--vscode-panel-border)',
+        'flex-shrink:0'
+    ].join(';');
+
+    const title = document.createElement('span');
+    title.textContent = 'Hist\u00f3rico de conversas';
+    title.style.cssText = 'font-size:12px;font-weight:600;color:var(--vscode-foreground);';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '\u2715';
+    closeBtn.title = 'Fechar';
+    closeBtn.style.cssText = [
+        'background:none',
+        'border:none',
+        'cursor:pointer',
+        'color:var(--vscode-descriptionForeground)',
+        'font-size:14px',
+        'padding:0 4px',
+        'line-height:1'
+    ].join(';');
+    closeBtn.addEventListener('click', closeHistoryDrawer);
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const list = document.createElement('div');
+    list.id = 'history-list';
+    list.style.cssText = [
+        'flex:1',
+        'overflow-y:auto',
+        'padding:8px 0'
+    ].join(';');
+
+    const loading = document.createElement('div');
+    loading.style.cssText = 'padding:16px 12px;font-size:12px;color:var(--vscode-descriptionForeground);text-align:center;';
+    loading.textContent = 'A carregar...';
+    list.appendChild(loading);
+
+    drawer.appendChild(header);
+    drawer.appendChild(list);
+
+    document.body.style.position = 'relative';
+    document.body.appendChild(drawer);
+}
+
+function openHistoryDrawer() {
+    buildHistoryDrawer();
+    historyDrawerOpen = true;
+    const drawer = document.getElementById('history-drawer');
+    if (drawer) drawer.style.transform = 'translateX(0)';
+    vscode.postMessage({ type: 'getHistory' });
+}
+
+function closeHistoryDrawer() {
+    historyDrawerOpen = false;
+    const drawer = document.getElementById('history-drawer');
+    if (drawer) drawer.style.transform = 'translateX(-100%)';
+}
+
+function renderHistoryList(sessions) {
+    const list = document.getElementById('history-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (!sessions || sessions.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'padding:16px 12px;font-size:12px;color:var(--vscode-descriptionForeground);text-align:center;';
+        empty.textContent = 'Nenhuma conversa guardada.';
+        list.appendChild(empty);
+        return;
+    }
+
+    for (const session of sessions) {
+        const item = document.createElement('div');
+        item.style.cssText = [
+            'display:flex',
+            'flex-direction:column',
+            'padding:8px 12px',
+            'cursor:pointer',
+            'border-bottom:1px solid var(--vscode-panel-border)',
+            'transition:background 0.1s'
+        ].join(';');
+
+        item.addEventListener('mouseenter', () => { item.style.background = 'var(--vscode-list-hoverBackground)'; });
+        item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+
+        const titleEl = document.createElement('div');
+        titleEl.textContent = session.title || 'Conversa sem t\u00edtulo';
+        titleEl.style.cssText = [
+            'font-size:12px',
+            'color:var(--vscode-foreground)',
+            'white-space:nowrap',
+            'overflow:hidden',
+            'text-overflow:ellipsis',
+            'margin-bottom:3px'
+        ].join(';');
+
+        const meta = document.createElement('div');
+        meta.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+        const dateEl = document.createElement('span');
+        dateEl.textContent = session.date;
+        dateEl.style.cssText = 'font-size:10px;color:var(--vscode-descriptionForeground);';
+
+        const modelEl = document.createElement('span');
+        modelEl.textContent = (session.model && session.model !== 'auto') ? session.model : '';
+        modelEl.style.cssText = 'font-size:10px;color:var(--vscode-descriptionForeground);opacity:0.7;';
+
+        meta.appendChild(dateEl);
+        if (session.model && session.model !== 'auto') meta.appendChild(modelEl);
+
+        item.appendChild(titleEl);
+        item.appendChild(meta);
+
+        item.addEventListener('click', () => {
+            vscode.postMessage({ type: 'loadSession', id: session.id });
+            closeHistoryDrawer();
+        });
+
+        list.appendChild(item);
+    }
+}
 
 // ─── Medidor de contexto ─────────────────────────────────────────────────────
 
@@ -58,11 +211,6 @@ function saveHistory() {
 
 // ─── Render inline (negrito, itálico, código, links) ─────────────────────────
 
-/**
- * Processa formatação inline e appenda nós no elemento pai.
- * @param {HTMLElement} parent
- * @param {string} text
- */
 function appendInline(parent, text) {
     const inlineRegex = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`|https?:\/\/[^\s\)\]\>"']+)/g;
     let last  = 0;
@@ -102,21 +250,33 @@ function appendInline(parent, text) {
 
 // ─── Render Markdown ──────────────────────────────────────────────────────────
 
-/**
- * Renderiza markdown: blocos de código (com botão copiar), listas,
- * cabeçalhos, checkboxes, negrito, itálico, código inline e links.
- * @param {string} text
- * @returns {HTMLElement}
- */
 function renderMarkdown(text) {
     const container = document.createElement('div');
-    const parts     = text.split(/(```[\s\S]*?```)/g);
+
+    // Separa blocos de código do texto normal usando exec() com índices explícitos
+    // (mais robusto que split() para conteúdo multiline)
+    const parts = [];
+    const codeBlockRegex = /```[\s\S]*?```/g;
+    let lastIndex = 0;
+    let m;
+    while ((m = codeBlockRegex.exec(text)) !== null) {
+        if (m.index > lastIndex) {
+            parts.push({ type: 'text', content: text.slice(lastIndex, m.index) });
+        }
+        parts.push({ type: 'code', content: m[0] });
+        lastIndex = m.index + m[0].length;
+    }
+    if (lastIndex < text.length) {
+        parts.push({ type: 'text', content: text.slice(lastIndex) });
+    }
 
     for (const part of parts) {
 
         // ── Bloco de código ──────────────────────────────────────────────────
-        if (part.startsWith('```')) {
-            const lines  = part.slice(3, -3).split('\n');
+        if (part.type === 'code') {
+            const raw    = part.content;
+            const inner  = raw.slice(3, -3);
+            const lines  = inner.split('\n');
             const lang   = lines[0].trim();
             const code   = lines.slice(1).join('\n');
 
@@ -130,7 +290,6 @@ function renderMarkdown(text) {
             codeEl.textContent = code;
             pre.appendChild(codeEl);
 
-            // Botão copiar
             const copyBtn = document.createElement('button');
             copyBtn.textContent   = 'Copiar';
             copyBtn.style.cssText = [
@@ -153,14 +312,13 @@ function renderMarkdown(text) {
 
             copyBtn.addEventListener('click', () => {
                 const doSuccess = () => {
-                    copyBtn.textContent   = '✓ Copiado';
-                    copyBtn.style.color   = 'var(--vscode-charts-green, #4ec9b0)';
+                    copyBtn.textContent = '\u2713 Copiado';
+                    copyBtn.style.color = 'var(--vscode-charts-green, #4ec9b0)';
                     setTimeout(() => {
                         copyBtn.textContent = 'Copiar';
                         copyBtn.style.color = 'var(--vscode-descriptionForeground)';
                     }, 1500);
                 };
-
                 if (navigator.clipboard?.writeText) {
                     navigator.clipboard.writeText(code).then(doSuccess).catch(() => fallbackCopy(code, doSuccess));
                 } else {
@@ -175,19 +333,15 @@ function renderMarkdown(text) {
         }
 
         // ── Texto normal — linha a linha ─────────────────────────────────────
-        const lines = part.split('\n');
+        const lines = part.content.split('\n');
         let i = 0;
 
         while (i < lines.length) {
             const line = lines[i];
 
-            // Linha vazia
-            if (line.trim() === '') {
-                i++;
-                continue;
-            }
+            if (line.trim() === '') { i++; continue; }
 
-            // Cabeçalhos # ## ###
+            // Cabeçalhos
             const headingMatch = line.match(/^(#{1,3})\s+(.*)/);
             if (headingMatch) {
                 const level = headingMatch[1].length;
@@ -200,7 +354,7 @@ function renderMarkdown(text) {
                 continue;
             }
 
-            // Linha horizontal ---
+            // Linha horizontal
             if (/^---+$/.test(line.trim())) {
                 const hr = document.createElement('hr');
                 hr.style.cssText = 'border:none;border-top:1px solid var(--vscode-panel-border);margin:8px 0;';
@@ -209,7 +363,7 @@ function renderMarkdown(text) {
                 continue;
             }
 
-            // Checkboxes - [ ] / - [x]  (antes das listas normais)
+            // Checkboxes
             if (/^\s*-\s+\[[ x]\]/i.test(line)) {
                 const ul = document.createElement('ul');
                 ul.style.cssText = 'margin:4px 0;padding-left:20px;list-style:none;';
@@ -231,14 +385,14 @@ function renderMarkdown(text) {
                 continue;
             }
 
-            // Listas não ordenadas  - * •
-            if (/^\s*[-*•]\s+/.test(line)) {
+            // Listas não ordenadas
+            if (/^\s*[-*\u2022]\s+/.test(line)) {
                 const ul = document.createElement('ul');
                 ul.style.cssText = 'margin:4px 0;padding-left:20px;';
-                while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) {
-                    const li      = document.createElement('li');
+                while (i < lines.length && /^\s*[-*\u2022]\s+/.test(lines[i])) {
+                    const li = document.createElement('li');
                     li.style.margin = '2px 0';
-                    appendInline(li, lines[i].replace(/^\s*[-*•]\s+/, ''));
+                    appendInline(li, lines[i].replace(/^\s*[-*\u2022]\s+/, ''));
                     ul.appendChild(li);
                     i++;
                 }
@@ -246,12 +400,12 @@ function renderMarkdown(text) {
                 continue;
             }
 
-            // Listas ordenadas  1. 2. 3.
+            // Listas ordenadas
             if (/^\s*\d+\.\s+/.test(line)) {
                 const ol = document.createElement('ol');
                 ol.style.cssText = 'margin:4px 0;padding-left:20px;';
                 while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
-                    const li      = document.createElement('li');
+                    const li = document.createElement('li');
                     li.style.margin = '2px 0';
                     appendInline(li, lines[i].replace(/^\s*\d+\.\s+/, ''));
                     ol.appendChild(li);
@@ -273,14 +427,9 @@ function renderMarkdown(text) {
     return container;
 }
 
-/**
- * Fallback de cópia para contextos sem clipboard API.
- * @param {string} text
- * @param {Function} onSuccess
- */
 function fallbackCopy(text, onSuccess) {
-    const ta      = document.createElement('textarea');
-    ta.value      = text;
+    const ta         = document.createElement('textarea');
+    ta.value         = text;
     ta.style.cssText = 'position:fixed;opacity:0;';
     document.body.appendChild(ta);
     ta.select();
@@ -306,7 +455,7 @@ function appendMessage(role, content) {
     row.className = 'msg-row ' + role;
     const label  = document.createElement('div');
     label.className   = 'msg-label';
-    label.textContent = role === 'user' ? 'Você' : 'Tess AI';
+    label.textContent = role === 'user' ? 'Voc\u00ea' : 'Tess AI';
     const bubble = document.createElement('div');
     bubble.className  = 'msg-bubble';
     if (role === 'user') {
@@ -326,7 +475,7 @@ function appendError(text) {
     const row    = document.createElement('div');
     row.className = 'msg-row error';
     const bubble = document.createElement('div');
-    bubble.className  = 'msg-bubble';
+    bubble.className   = 'msg-bubble';
     bubble.textContent = text;
     row.appendChild(bubble);
     messagesEl.appendChild(row);
@@ -338,7 +487,7 @@ function appendToolNotice(tool, args) {
     const row    = document.createElement('div');
     row.className = 'msg-row tool';
     const bubble = document.createElement('div');
-    bubble.className  = 'msg-bubble';
+    bubble.className   = 'msg-bubble';
     bubble.textContent = '\u{1F527} A executar ferramenta: ' + tool + (args ? ' \u2192 ' + args : '');
     row.appendChild(bubble);
     messagesEl.appendChild(row);
@@ -381,13 +530,6 @@ function appendChunk(text) {
     scrollBottom();
 }
 
-/**
- * Extrai o conteúdo do último bloco de código (```...```) antes de tagIndex.
- * Usado para obter o conteúdo a passar a write_file / edit_file.
- * @param {string} text
- * @param {number} tagIndex
- * @returns {string|null}
- */
 function _extractLastCodeBlock(text, tagIndex) {
     const segment = text.slice(0, tagIndex);
     const regex   = /```(?:\w+)?\n([\s\S]*?)```/g;
@@ -415,7 +557,6 @@ function finalizeAssistant() {
             return;
         }
 
-        // ── Detecta tool calls ──────────────────────────────────────────────────
         const toolRegex   = /\[TOOL:(\w+)(?::([^\]]+))?\]/g;
         const toolMatches = [...rawText.matchAll(toolRegex)];
 
@@ -443,7 +584,6 @@ function finalizeAssistant() {
             return;
         }
 
-        // ── Resposta normal — re-renderiza com markdown ─────────────────────────
         assistantBubble.textContent = '';
         assistantBubble.appendChild(renderMarkdown(rawText));
 
@@ -499,7 +639,7 @@ function send() {
     actualTokens = null;
     updateContextMeter();
     vscode.postMessage({
-        type:    'send',
+        type:     'send',
         userText: text,
         model:    modelSelect.value,
         history:  history.slice(0, -1)
@@ -521,7 +661,16 @@ inputEl.addEventListener('input', () => {
 
 codeBtn.addEventListener('click', () => vscode.postMessage({ type: 'pickFile' }));
 contextBtn.addEventListener('click', () => vscode.postMessage({ type: 'getWorkspaceContext' }));
-historyBtn.addEventListener('click', () => vscode.postMessage({ type: 'openHistory' }));
+
+// ── Histórico: abre/fecha o drawer inline ────────────────────────────────────
+historyBtn.addEventListener('click', () => {
+    if (historyDrawerOpen) {
+        closeHistoryDrawer();
+    } else {
+        openHistoryDrawer();
+    }
+});
+
 modelSelect.addEventListener('change', updateContextMeter);
 
 clearBtn.addEventListener('click', () => {
@@ -532,7 +681,7 @@ clearBtn.addEventListener('click', () => {
     const emptyDiv = document.createElement('div');
     emptyDiv.id = 'empty';
     emptyDiv.style.cssText = 'margin:auto;text-align:center;color:var(--vscode-descriptionForeground);font-size:13px;line-height:2';
-    emptyDiv.innerHTML = 'Ol\u00E1! Como posso ajudar?<br><small>O c\u00F3digo do editor activo \u00E9 inclu\u00EDdo automaticamente.</small>';
+    emptyDiv.innerHTML = 'Ol\u00e1! Como posso ajudar?<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
     messagesEl.appendChild(emptyDiv);
     watermarkEl.classList.remove('hidden');
     setWaiting(false);
@@ -588,7 +737,7 @@ window.addEventListener('message', ({ data }) => {
             setWaiting(true);
             beginAssistantBubble();
             vscode.postMessage({
-                type:    'send',
+                type:     'send',
                 userText: toolContent,
                 model:    modelSelect.value,
                 history:  history.slice(0, -1),
@@ -602,7 +751,7 @@ window.addEventListener('message', ({ data }) => {
                 const snippet = '```' + data.code.language + '\n' + data.code.code + '\n```';
                 inputEl.value = inputEl.value ? inputEl.value + '\n\n' + snippet : snippet;
             } else {
-                appendError('Nenhum editor activo. Abra um ficheiro de c\u00F3digo primeiro.');
+                appendError('Nenhum editor activo. Abra um ficheiro de c\u00f3digo primeiro.');
             }
             autoResize();
             inputEl.focus();
@@ -621,7 +770,7 @@ window.addEventListener('message', ({ data }) => {
 
         case 'insertContext':
             if (data.context) {
-                const prefix = `<!-- Contexto do projecto: ${data.label} -->\n`;
+                const prefix = '<!-- Contexto do projecto: ' + data.label + ' -->\n';
                 const block  = '\n' + data.context + '\n';
                 inputEl.value = inputEl.value
                     ? inputEl.value + '\n\n' + prefix + block
@@ -639,7 +788,7 @@ window.addEventListener('message', ({ data }) => {
             contextBtn.disabled = true;
             {
                 const emptyEl = document.getElementById('empty');
-                const msg = 'Configure a sua liga\u00E7\u00E3o \u00E0 Tess antes de continuar.<br>'
+                const msg = 'Configure a sua liga\u00e7\u00e3o \u00e0 Tess antes de continuar.<br>'
                     + '<small>Ctrl+, \u2192 pesquise <strong>tess</strong> \u2192 preencha <em>API Key</em> e <em>Agent ID</em></small>';
                 if (emptyEl) {
                     emptyEl.innerHTML = msg;
@@ -666,7 +815,7 @@ window.addEventListener('message', ({ data }) => {
                 const banner  = document.getElementById('not-configured-banner');
                 if (banner) banner.remove();
                 const emptyEl = document.getElementById('empty');
-                if (emptyEl) emptyEl.innerHTML = 'Ol\u00E1! Como posso ajudar?<br><small>O c\u00F3digo do editor activo \u00E9 inclu\u00EDdo automaticamente.</small>';
+                if (emptyEl) emptyEl.innerHTML = 'Ol\u00e1! Como posso ajudar?<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
             }
             if (data.models === null) {
                 modelRowEl.classList.add('hidden');
@@ -681,14 +830,17 @@ window.addEventListener('message', ({ data }) => {
             }
             break;
 
+        // ── Histórico inline ─────────────────────────────────────────────────
+        case 'historyList':
+            renderHistoryList(data.sessions);
+            break;
+
         case 'restoreHistory':
-            // Limpa DOM e estado antes de restaurar
             history         = [];
             actualTokens    = null;
             assistantBubble = null;
             [...messagesEl.children].forEach(el => { if (el.id !== 'watermark') el.remove(); });
 
-            // Reconstrói a partir da sessão carregada
             history = data.history.map(m => ({ role: m.role, content: m.content }));
 
             if (history.length > 0) {

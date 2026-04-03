@@ -1,15 +1,12 @@
-// c:\Developer\VS_Code_Tess_Extension\src\provider.js
 'use strict';
 
 const vscode = require('vscode');
-const { handleSend }                        = require('./api');
+const { handleSend }                            = require('./api');
 const { syncAgentConfig, MODELS, MODEL_LIMITS } = require('./models');
-
 const { getCurrentCode, pickWorkspaceFiles, sendWorkspaceContext } = require('./workspace');
-
-const { buildHtml }                         = require('./webview');
-const { executeTool }                       = require('./tools');
-const chatHistory                           = require('./chatHistory');
+const { buildHtml }                             = require('./webview');
+const { executeTool }                           = require('./tools');
+const chatHistory                               = require('./chatHistory');
 
 function _formatSessionDate(isoDate) {
     const date = new Date(isoDate);
@@ -25,7 +22,6 @@ class TessChatViewProvider {
     _abortController    = null;
     _lastEditor         = null;
     _activeSessionId    = null;
-    _historyProvider    = null;
 
     constructor(context) {
         this._context = context;
@@ -35,31 +31,6 @@ class TessChatViewProvider {
             })
         );
     }
-
-    // ── Métodos públicos chamados pelo extension.js ──────────────────────────
-
-    setHistoryProvider(historyProvider) {
-        this._historyProvider = historyProvider;
-    }
-
-    loadSession(session) {
-        if (!this._view) return;
-
-        this._activeSessionId = session.id;
-
-        // Deriva o modelo da última mensagem do assistente
-        const lastModel = [...session.messages]
-            .reverse()
-            .find(m => m.role === 'assistant' && m.model)
-            ?.model ?? 'auto';
-
-        this._view.webview.postMessage({
-            type:    'restoreHistory',
-            history: session.messages,
-            model:   lastModel
-        });
-    }
-
 
     insertCode() {
         if (!this._view) return;
@@ -84,7 +55,6 @@ class TessChatViewProvider {
             ]
         };
 
-        // Gera nonce único por sessão
         const nonce = require('crypto').randomBytes(16).toString('hex');
 
         const logoUri = webviewView.webview.asWebviewUri(
@@ -103,7 +73,7 @@ class TessChatViewProvider {
             scriptUri,
             MODELS,
             MODEL_LIMITS,
-            webviewView.webview.cspSource,  // ← valor correcto para a webview
+            webviewView.webview.cspSource,
             nonce
         );
 
@@ -140,8 +110,6 @@ class TessChatViewProvider {
                 await this._handleToolCall(msg);
                 break;
 
-            // saveHistory substituído pela integração directa no _handleSend
-            // mantido por compatibilidade com versões antigas do webview-script.js
             case 'saveHistory':
                 this._context.workspaceState.update('tess.history', msg.history);
                 this._context.workspaceState.update('tess.model',   msg.model);
@@ -151,43 +119,55 @@ class TessChatViewProvider {
                 this._activeSessionId = null;
                 break;
 
-            case 'openHistory':
-                await this._handleOpenHistory();
+            // ── Histórico inline (drawer no WebView) ─────────────────────
+            case 'getHistory':
+                this._sendHistoryList();
+                break;
+
+            case 'loadSession':
+                this._loadSessionById(msg.id);
                 break;
         }
     }
 
-    async _handleOpenHistory() {
+    // ── Histórico inline ─────────────────────────────────────────────────────
+
+    _sendHistoryList() {
         const sessions = chatHistory.listSessions();
-        if (sessions.length === 0) {
-            vscode.window.showInformationMessage('Não há conversas guardadas.');
-            return;
-        }
-
         const items = sessions.map(s => ({
-            label:       s.title,
-            description: _formatSessionDate(s.updatedAt),
             id:          s.id,
+            title:       s.title,
+            date:        _formatSessionDate(s.updatedAt),
+            model:       s.model ?? 'auto'
         }));
-
-        const picked = await vscode.window.showQuickPick(items, {
-            placeHolder:        'Selecione uma conversa para retomar',
-            matchOnDescription: true,
-        });
-
-        if (picked) {
-            const session = chatHistory.getSession(picked.id);
-            if (session) this.loadSession(session);
-        }
+        this._view?.webview.postMessage({ type: 'historyList', sessions: items });
     }
+
+    _loadSessionById(id) {
+        const session = chatHistory.getSession(id);
+        if (!session) return;
+
+        this._activeSessionId = session.id;
+
+        const lastModel = [...session.messages]
+            .reverse()
+            .find(m => m.role === 'assistant' && m.model)
+            ?.model ?? 'auto';
+
+        this._view?.webview.postMessage({
+            type:    'restoreHistory',
+            history: session.messages,
+            model:   lastModel
+        });
+    }
+
+    // ── Send ─────────────────────────────────────────────────────────────────
 
     async _handleSend(msg) {
         if (!this._activeSessionId) {
             this._activeSessionId = chatHistory.createSession(msg.userText, msg.model);
-            this._historyProvider?.refresh();
         }
 
-        // Guarda mensagem do utilizador (ignorar chamadas de tool continuation sem texto)
         if (msg.userText) {
             chatHistory.appendMessage(this._activeSessionId, 'user', msg.userText, msg.model);
         }
@@ -205,10 +185,8 @@ class TessChatViewProvider {
                 msg.isTool ?? false
             );
 
-            // Guarda resposta do assistente (se handleSend a devolver)
             if (response) {
                 chatHistory.appendMessage(this._activeSessionId, 'assistant', response, msg.model);
-                this._historyProvider?.refresh();
             }
 
         } catch (err) {
@@ -233,19 +211,18 @@ class TessChatViewProvider {
     // ── Config & restore ─────────────────────────────────────────────────────
 
     _onWebviewReady() {
-        // Tenta restaurar a sessão mais recente do histórico
         const sessions = chatHistory.listSessions();
 
         if (sessions.length > 0) {
-            const latest  = sessions[0]; // listSessions devolve ordenado por data desc
+            const latest  = sessions[0];
             const session = chatHistory.getSession(latest.id);
 
             if (session?.messages?.length > 0) {
                 this._activeSessionId = session.id;
                 this._view.webview.postMessage({
-                    type: 'restoreHistory',
+                    type:    'restoreHistory',
                     history: session.messages,
-                    model: session.model ?? 'auto'
+                    model:   session.model ?? 'auto'
                 });
             }
         }

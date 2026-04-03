@@ -1,3 +1,9 @@
+# cria pasta na raiz e move os assets
+mkdir media
+copy src\webview\webview.css media\webview.css
+copy src\webview\webview-script.js media\webview-script.js
+
+
 Para testar:
 
 F5 no VS Code com o projecto aberto — abre uma segunda janela Extension Development Host com a extensão carregada directamente da pasta de trabalho

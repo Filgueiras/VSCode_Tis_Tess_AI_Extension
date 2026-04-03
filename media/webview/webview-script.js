@@ -11,6 +11,7 @@ const sendBtn        = document.getElementById('sendBtn');
 const modelSelect    = document.getElementById('modelSelect');
 const codeBtn        = document.getElementById('codeBtn');
 const contextBtn     = document.getElementById('contextBtn');
+const historyBtn     = document.getElementById('historyBtn');
 const clearBtn       = document.getElementById('clearBtn');
 const watermarkEl    = document.getElementById('watermark');
 const modelRowEl     = document.getElementById('modelRow');
@@ -380,54 +381,88 @@ function appendChunk(text) {
     scrollBottom();
 }
 
+/**
+ * Extrai o conteúdo do último bloco de código (```...```) antes de tagIndex.
+ * Usado para obter o conteúdo a passar a write_file / edit_file.
+ * @param {string} text
+ * @param {number} tagIndex
+ * @returns {string|null}
+ */
+function _extractLastCodeBlock(text, tagIndex) {
+    const segment = text.slice(0, tagIndex);
+    const regex   = /```(?:\w+)?\n([\s\S]*?)```/g;
+    let last = null;
+    let m;
+    while ((m = regex.exec(segment)) !== null) { last = m[1]; }
+    return last;
+}
+
 function finalizeAssistant() {
     if (!assistantBubble) return;
 
-    const cursor = assistantBubble.querySelector('.cursor');
-    if (cursor) cursor.remove();
+    try {
+        const cursor = assistantBubble.querySelector('.cursor');
+        if (cursor) cursor.remove();
 
-    const thinking = assistantBubble.querySelector('.thinking');
-    const rawText  = assistantBubble.dataset.raw ?? assistantBubble.textContent;
+        const thinking = assistantBubble.querySelector('.thinking');
+        const rawText  = assistantBubble.dataset.raw ?? assistantBubble.textContent;
 
-    if (thinking || rawText.trim() === '') {
-        assistantBubble.closest('.msg-row').remove();
+        if (thinking || rawText.trim() === '') {
+            assistantBubble.closest('.msg-row').remove();
+            assistantBubble = null;
+            setWaiting(false);
+            updateContextMeter();
+            return;
+        }
+
+        // ── Detecta tool calls ──────────────────────────────────────────────────
+        const toolRegex   = /\[TOOL:(\w+)(?::([^\]]+))?\]/g;
+        const toolMatches = [...rawText.matchAll(toolRegex)];
+
+        if (toolMatches.length > 0) {
+            const cleanText = rawText.replace(/\[TOOL:[^\]]+\]/g, '').trim();
+            assistantBubble.textContent = '';
+            if (cleanText) {
+                assistantBubble.appendChild(renderMarkdown(cleanText));
+                history.push({ role: 'assistant', content: cleanText });
+                saveHistory();
+            } else {
+                assistantBubble.closest('.msg-row').remove();
+            }
+            assistantBubble = null;
+            setWaiting(false);
+
+            for (const match of toolMatches) {
+                const tool    = match[1];
+                const args    = match[2] ?? null;
+                const content = (tool === 'write_file' || tool === 'edit_file')
+                    ? _extractLastCodeBlock(rawText, match.index)
+                    : null;
+                vscode.postMessage({ type: 'toolCall', tool, args, content });
+            }
+            return;
+        }
+
+        // ── Resposta normal — re-renderiza com markdown ─────────────────────────
+        assistantBubble.textContent = '';
+        assistantBubble.appendChild(renderMarkdown(rawText));
+
+        history.push({ role: 'assistant', content: rawText });
+        saveHistory();
+
         assistantBubble = null;
         setWaiting(false);
         updateContextMeter();
-        return;
-    }
 
-    // ── Detecta tool calls ──────────────────────────────────────────────────
-    const toolRegex   = /\[TOOL:(\w+)(?::([^\]]+))?\]/g;
-    const toolMatches = [...rawText.matchAll(toolRegex)];
-
-    if (toolMatches.length > 0) {
-        const cleanText = rawText.replace(/\[TOOL:[^\]]+\]/g, '').trim();
-        assistantBubble.textContent = '';
-        if (cleanText) {
-            assistantBubble.appendChild(renderMarkdown(cleanText));
-        } else {
-            assistantBubble.closest('.msg-row').remove();
+    } catch (err) {
+        console.error('[Tess] Erro em finalizeAssistant:', err);
+        if (assistantBubble) {
+            assistantBubble.closest('.msg-row')?.remove();
+            assistantBubble = null;
         }
-        assistantBubble = null;
         setWaiting(false);
-
-        for (const match of toolMatches) {
-            vscode.postMessage({ type: 'toolCall', tool: match[1], args: match[2] ?? null });
-        }
-        return;
+        updateContextMeter();
     }
-
-    // ── Resposta normal — re-renderiza com markdown ─────────────────────────
-    assistantBubble.textContent = '';
-    assistantBubble.appendChild(renderMarkdown(rawText));
-
-    history.push({ role: 'assistant', content: rawText });
-    saveHistory();
-
-    assistantBubble = null;
-    setWaiting(false);
-    updateContextMeter();
 }
 
 // ─── Estado do input ─────────────────────────────────────────────────────────
@@ -486,6 +521,7 @@ inputEl.addEventListener('input', () => {
 
 codeBtn.addEventListener('click', () => vscode.postMessage({ type: 'pickFile' }));
 contextBtn.addEventListener('click', () => vscode.postMessage({ type: 'getWorkspaceContext' }));
+historyBtn.addEventListener('click', () => vscode.postMessage({ type: 'openHistory' }));
 modelSelect.addEventListener('change', updateContextMeter);
 
 clearBtn.addEventListener('click', () => {
@@ -545,22 +581,21 @@ window.addEventListener('message', ({ data }) => {
             appendToolNotice(data.tool, data.args);
             break;
 
-        case 'toolResult':
-            history.push({
-                role:    'user',
-                content: '[Resultado da ferramenta ' + data.tool
-                    + (data.args ? ': ' + data.args : '') + ']\n\n' + data.result
-            });
+        case 'toolResult': {
+            const toolContent = '[Resultado da ferramenta ' + data.tool
+                + (data.args ? ': ' + data.args : '') + ']\n\n' + data.result;
+            history.push({ role: 'user', content: toolContent });
             setWaiting(true);
             beginAssistantBubble();
             vscode.postMessage({
                 type:    'send',
-                userText: '',
+                userText: toolContent,
                 model:    modelSelect.value,
                 history:  history.slice(0, -1),
                 isTool:   true
             });
             break;
+        }
 
         case 'insertCode':
             if (data.code) {
@@ -647,18 +682,23 @@ window.addEventListener('message', ({ data }) => {
             break;
 
         case 'restoreHistory':
-            history = data.history;
-            watermarkEl.classList.add('hidden');
-            for (const msg of history) { appendMessage(msg.role, msg.content); }
-            if (data.model) modelSelect.value = data.model;
-            updateContextMeter();
-            break;
-
-        case 'loadSession':
-            history = data.data.messages.map(m => ({ role: m.role, content: m.content }));
+            // Limpa DOM e estado antes de restaurar
+            history         = [];
+            actualTokens    = null;
+            assistantBubble = null;
             [...messagesEl.children].forEach(el => { if (el.id !== 'watermark') el.remove(); });
-            watermarkEl.classList.add('hidden');
-            for (const msg of history) { appendMessage(msg.role, msg.content); }
+
+            // Reconstrói a partir da sessão carregada
+            history = data.history.map(m => ({ role: m.role, content: m.content }));
+
+            if (history.length > 0) {
+                watermarkEl.classList.add('hidden');
+                for (const msg of history) { appendMessage(msg.role, msg.content); }
+            } else {
+                watermarkEl.classList.remove('hidden');
+            }
+
+            if (data.model && data.model !== 'auto') modelSelect.value = data.model;
             updateContextMeter();
             break;
     }

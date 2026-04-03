@@ -8,7 +8,7 @@ const chatHistory              = require('./src/chatHistory');
 const { registerHistoryView }  = require('./src/chatHistoryView');
 
 function activate(context) {
-    console.log('[Tess] Extensão activada');
+    console.log('[Tis.ai & Tess] Extensão activada');
 
     // 1. Histórico — tem de ser o primeiro
     chatHistory.init(context);
@@ -45,10 +45,15 @@ function activate(context) {
         })
 
     );
+
+   // Força o chat a ficar visível assim que a extensão activa (com timeout)
+    setTimeout(() => {
+        vscode.commands.executeCommand('tess.chatView.focus');
+    }, 500);
 }
 
 function deactivate() {
-    console.log('[Tess] Extensão desactivada');
+    console.log('[Tis.ai & Tess] Extensão desactivada');
 }
 
 module.exports = { activate, deactivate };

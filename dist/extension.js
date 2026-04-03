@@ -15194,6 +15194,143 @@ ${lines.join("\n")}`;
   }
 });
 
+// src/tools.js
+var require_tools = __commonJS({
+  "src/tools.js"(exports2, module2) {
+    var vscode2 = require("vscode");
+    var { readWorkspaceFile, getWorkspaceTree } = require_workspace();
+    var TOOL_REGEX = /\[TOOL:(\w+)(?::([^\]]+))?\]/g;
+    async function executeToolCalls(text, view) {
+      const matches = [...text.matchAll(TOOL_REGEX)];
+      if (matches.length === 0) return { cleanText: text, hasTools: false };
+      const cleanText = text.replace(TOOL_REGEX, "").trim();
+      for (const match of matches) {
+        const [, toolName, args] = match;
+        const result = await executeTool(toolName, args ?? null);
+        view.webview.postMessage({
+          type: "toolResult",
+          tool: toolName,
+          args: args ?? null,
+          result
+        });
+      }
+      return { cleanText, hasTools: true };
+    }
+    async function executeTool(toolName, args, content = null) {
+      console.log(`[Tess Tools] Executando: ${toolName}${args ? ":" + args : ""}`);
+      switch (toolName) {
+        case "get_tree": {
+          const tree = await getWorkspaceTree();
+          if (!tree) return "Erro: sem workspace aberto ou pasta vazia.";
+          return tree;
+        }
+        case "get_file": {
+          if (!args) return "Erro: get_file requer um caminho de ficheiro.";
+          const { error, content: content2, language, path } = await readWorkspaceFile(args);
+          if (error) return `Erro ao ler "${args}": ${error}`;
+          return `\`\`\`${language}
+// ${path}
+${content2}
+\`\`\``;
+        }
+        case "write_file":
+        case "edit_file": {
+          if (!args) return `Erro: ${toolName} requer o caminho do ficheiro.`;
+          if (!content) return `Erro: ${toolName} n\xE3o recebeu conte\xFAdo \u2014 escreve o bloco de c\xF3digo antes da tag.`;
+          const filePath = args.trim();
+          const folders = vscode2.workspace.workspaceFolders;
+          if (!folders) return "Erro: sem workspace aberto.";
+          const uri = vscode2.Uri.joinPath(folders[0].uri, filePath);
+          let fileExists = false;
+          try {
+            await vscode2.workspace.fs.stat(uri);
+            fileExists = true;
+          } catch {
+          }
+          const action = fileExists ? "editar" : "criar";
+          const confirmed = await vscode2.window.showWarningMessage(
+            `Tess quer ${action}: ${filePath}`,
+            { modal: true },
+            "Permitir",
+            "Cancelar"
+          );
+          if (confirmed !== "Permitir") return `Opera\xE7\xE3o cancelada pelo utilizador: ${filePath}`;
+          try {
+            const encoder = new TextEncoder();
+            await vscode2.workspace.fs.writeFile(uri, encoder.encode(content));
+            const doc = await vscode2.workspace.openTextDocument(uri);
+            await vscode2.window.showTextDocument(doc, { preview: true, preserveFocus: true });
+            console.log(`[Tess Tools] Ficheiro ${action}: ${filePath}`);
+            return `Ficheiro ${action === "criar" ? "criado" : "editado"} com sucesso: ${filePath}`;
+          } catch (err) {
+            return `Erro ao ${action} ficheiro: ${err.message}`;
+          }
+        }
+        case "list_dir": {
+          const dirPath = args ?? "";
+          try {
+            const folders = vscode2.workspace.workspaceFolders;
+            if (!folders) return "Erro: sem workspace aberto.";
+            const uri = vscode2.Uri.joinPath(folders[0].uri, dirPath);
+            const entries = await vscode2.workspace.fs.readDirectory(uri);
+            const lines = entries.map(([name, type]) => {
+              const icon = type === vscode2.FileType.Directory ? "\u{1F4C1}" : "\u{1F4C4}";
+              return `${icon} ${name}`;
+            });
+            return `Conte\xFAdo de "${dirPath || "/"}":
+${lines.join("\n")}`;
+          } catch (err) {
+            return `Erro ao listar directoria: ${err.message}`;
+          }
+        }
+        default:
+          return `Ferramenta desconhecida: "${toolName}". Ferramentas dispon\xEDveis: get_tree, get_file, list_dir, write_file, edit_file`;
+      }
+    }
+    function getToolsSystemPrompt() {
+      return `
+## Ferramentas dispon\xEDveis (VS Code File System)
+
+Tens acesso ao sistema de ficheiros do projecto VS Code do utilizador.
+Para usar uma ferramenta, inclui a tag exacta na tua resposta \u2014 a extens\xE3o intercepta-a automaticamente.
+
+### Ferramentas
+
+| Tag | Descri\xE7\xE3o |
+|-----|-----------|
+| \`[TOOL:get_tree]\` | Ver a estrutura completa do projecto |
+| \`[TOOL:get_file:caminho/ficheiro.js]\` | Ler o conte\xFAdo de um ficheiro |
+| \`[TOOL:list_dir:caminho/pasta]\` | Listar o conte\xFAdo de uma directoria |
+| \`[TOOL:write_file:caminho/ficheiro.js]\` | Criar um ficheiro novo (pede confirma\xE7\xE3o) |
+| \`[TOOL:edit_file:caminho/ficheiro.js]\` | Editar um ficheiro existente (pede confirma\xE7\xE3o) |
+
+### Protocolo para write_file e edit_file
+
+Para criar ou editar um ficheiro, segue **obrigatoriamente** este padr\xE3o:
+1. Escreve o conte\xFAdo completo num bloco de c\xF3digo (\`\`\`linguagem ... \`\`\`)
+2. Imediatamente a seguir, coloca a tag da ferramenta com o caminho
+
+Exemplo:
+\`\`\`javascript
+// conte\xFAdo completo do ficheiro
+function hello() { return 'world'; }
+\`\`\`
+[TOOL:write_file:src/utils.js]
+
+### Regras
+
+1. Usa **get_tree** primeiro quando n\xE3o conheces a estrutura do projecto
+2. Usa **get_file** para ler ficheiros antes de os editar
+3. O conte\xFAdo do bloco de c\xF3digo deve ser o ficheiro completo, nunca parcial
+4. Pede apenas os ficheiros necess\xE1rios \u2014 n\xE3o pe\xE7as todos de uma vez
+5. Ap\xF3s receberes o resultado de uma ferramenta, analisa e responde ao utilizador
+6. As tags s\xE3o removidas da resposta vis\xEDvel \u2014 o utilizador n\xE3o as v\xEA
+`.trim();
+    }
+    module2.exports = { executeToolCalls, executeTool, getToolsSystemPrompt };
+  }
+});
+
 // src/api.js
 var require_api = __commonJS({
   "src/api.js"(exports2, module2) {
@@ -15201,8 +15338,11 @@ var require_api = __commonJS({
     var vscode2 = require("vscode");
     var axios = require_axios();
     var { getWorkspaceTree, getCurrentCode } = require_workspace();
+    var { getToolsSystemPrompt } = require_tools();
     var BASE_URL = "https://api.tess.im";
     var REQUEST_TIMEOUT = 3e5;
+    var FIRST_BYTE_LIMIT = 3e4;
+    var INACTIVITY_LIMIT = 6e4;
     async function readErrorBody(data) {
       if (typeof data?.pipe !== "function") {
         console.error("[Tess:api] Erro API:", JSON.stringify(data));
@@ -15232,7 +15372,10 @@ var require_api = __commonJS({
         });
       } catch (error) {
         if (error.response?.status === 429) {
-          const retryAfter = Number.parseInt(error.response.headers["retry-after"] ?? "5", 10);
+          const retryAfter = Number.parseInt(
+            error.response.headers["retry-after"] ?? "5",
+            10
+          );
           console.warn(`[Tess:api] Rate limit atingido. Aguardando ${retryAfter}s...`);
           await new Promise((res) => setTimeout(res, retryAfter * 1e3));
           return await axios.post(url, body, {
@@ -15257,32 +15400,33 @@ var require_api = __commonJS({
         view.webview.postMessage({ type: "error", text: "Agent ID n\xE3o configurado. V\xE1 a Defini\xE7\xF5es \u2192 tess.agentId" });
         return null;
       }
-      let fullUserText = userText;
-      if (!isToolContinuation && userText) {
-        const codeInfo = getCurrentCode(lastEditor);
-        if (codeInfo) {
-          fullUserText = `${userText}
+      try {
+        let fullUserText = userText;
+        if (!isToolContinuation && userText) {
+          const codeInfo = getCurrentCode(lastEditor);
+          if (codeInfo) {
+            fullUserText = `${userText}
 
 \`\`\`${codeInfo.language}
 ${codeInfo.code}
 \`\`\``;
-        }
-        if (history.length === 0) {
-          const tree = await getWorkspaceTree();
-          if (tree) fullUserText = `${tree}
+          }
+          if (history.length === 0) {
+            const tree = await getWorkspaceTree();
+            if (tree) fullUserText = `${tree}
 
 ---
 
 ${fullUserText}`;
+          }
         }
-      }
-      const messages = [
-        ...history.map((m) => ({ role: m.role, content: m.content })),
-        { role: "user", content: fullUserText || userText }
-      ];
-      const body = { messages, stream: true };
-      if (model !== "auto") body.model = model;
-      try {
+        const messages = [
+          { role: "system", content: getToolsSystemPrompt() },
+          ...history.map((m) => ({ role: m.role, content: m.content })),
+          { role: "user", content: fullUserText || userText }
+        ];
+        const body = { messages, stream: true };
+        if (model !== "auto") body.model = model;
         console.log(`[Tess] \u2192 POST ${BASE_URL}/agents/${agentId}/openai/chat/completions (model: ${model})`);
         view.webview.postMessage({ type: "startResponse" });
         const response = await postWithRetry(
@@ -15297,7 +15441,45 @@ ${fullUserText}`;
         return await new Promise((resolve) => {
           let buffer = "";
           let fullText = "";
+          let receivedChunk = false;
+          let doneSent = false;
+          const firstByteTimer = setTimeout(() => {
+            if (!receivedChunk) {
+              console.warn("[Tess] Timeout: sem resposta em 30s");
+              response.data.destroy();
+              view.webview.postMessage({
+                type: "error",
+                text: "O modelo demorou demasiado a responder. Tente novamente."
+              });
+              resolve(null);
+            }
+          }, FIRST_BYTE_LIMIT);
+          let inactivityTimer = null;
+          function resetInactivity() {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+              if (!doneSent) {
+                console.warn("[Tess] Timeout de inactividade: stream parou sem fechar");
+                response.data.destroy();
+                view.webview.postMessage({
+                  type: "error",
+                  text: "A resposta parou a meio sem terminar. Tente novamente."
+                });
+                resolve(null);
+              }
+            }, INACTIVITY_LIMIT);
+          }
+          function finish(text) {
+            if (doneSent) return;
+            doneSent = true;
+            clearTimeout(firstByteTimer);
+            clearTimeout(inactivityTimer);
+            view.webview.postMessage({ type: "endResponse" });
+            resolve(text || null);
+          }
           response.data.on("data", (chunk) => {
+            receivedChunk = true;
+            resetInactivity();
             buffer += chunk.toString();
             const lines = buffer.split("\n");
             buffer = lines.pop();
@@ -15305,8 +15487,7 @@ ${fullUserText}`;
               if (!line.startsWith("data: ")) continue;
               const raw = line.slice(6).trim();
               if (raw === "[DONE]") {
-                view.webview.postMessage({ type: "endResponse" });
-                resolve(fullText || null);
+                finish(fullText);
                 return;
               }
               try {
@@ -15324,12 +15505,30 @@ ${fullUserText}`;
             }
           });
           response.data.on("end", () => {
-            view.webview.postMessage({ type: "endResponse" });
-            resolve(fullText || null);
+            if (buffer.startsWith("data: ")) {
+              const raw = buffer.slice(6).trim();
+              if (raw && raw !== "[DONE]") {
+                try {
+                  const parsed = JSON.parse(raw);
+                  const text = parsed.choices?.[0]?.delta?.content;
+                  if (text) {
+                    fullText += text;
+                    view.webview.postMessage({ type: "chunk", text });
+                  }
+                } catch {
+                }
+              }
+            }
+            finish(fullText);
           });
           response.data.on("error", (err) => {
+            clearTimeout(firstByteTimer);
+            clearTimeout(inactivityTimer);
             console.error("[Tess] Erro de stream:", err.message);
-            view.webview.postMessage({ type: "error", text: `Erro de liga\xE7\xE3o: ${err.message}` });
+            view.webview.postMessage({
+              type: "error",
+              text: `Erro de liga\xE7\xE3o: ${err.message}`
+            });
             resolve(null);
           });
         });
@@ -15448,6 +15647,7 @@ var require_webview = __commonJS({
       <label>Modelo:</label>
       <select id="modelSelect">${modelOptions}</select>
     </div>
+    <button class="btn-ghost" id="historyBtn">Hist\xF3rico</button>
     <button class="btn-ghost" id="clearBtn">Limpar</button>
   </div>
 
@@ -15496,121 +15696,6 @@ var require_webview = __commonJS({
   }
 });
 
-// src/tools.js
-var require_tools = __commonJS({
-  "src/tools.js"(exports2, module2) {
-    var vscode2 = require("vscode");
-    var { readWorkspaceFile, getWorkspaceTree } = require_workspace();
-    var TOOL_REGEX = /\[TOOL:(\w+)(?::([^\]]+))?\]/g;
-    async function executeToolCalls(text, view) {
-      const matches = [...text.matchAll(TOOL_REGEX)];
-      if (matches.length === 0) return { cleanText: text, hasTools: false };
-      const cleanText = text.replace(TOOL_REGEX, "").trim();
-      for (const match of matches) {
-        const [, toolName, args] = match;
-        const result = await executeTool(toolName, args ?? null);
-        view.webview.postMessage({
-          type: "toolResult",
-          tool: toolName,
-          args: args ?? null,
-          result
-        });
-      }
-      return { cleanText, hasTools: true };
-    }
-    async function executeTool(toolName, args) {
-      console.log(`[Tess Tools] Executando: ${toolName}${args ? ":" + args : ""}`);
-      switch (toolName) {
-        case "get_tree": {
-          const tree = await getWorkspaceTree();
-          if (!tree) return "Erro: sem workspace aberto ou pasta vazia.";
-          return tree;
-        }
-        case "get_file": {
-          if (!args) return "Erro: get_file requer um caminho de ficheiro.";
-          const { error, content, language, path } = await readWorkspaceFile(args);
-          if (error) return `Erro ao ler "${args}": ${error}`;
-          return `\`\`\`${language}
-// ${path}
-${content}
-\`\`\``;
-        }
-        case "write_file": {
-          if (!args) return "Erro: write_file requer caminho e conte\xFAdo.";
-          const colonIndex = args.indexOf(":");
-          if (colonIndex === -1) return "Erro: formato inv\xE1lido. Use [TOOL:write_file:caminho:conteudo]";
-          const filePath = args.slice(0, colonIndex);
-          const fileContent = args.slice(colonIndex + 1);
-          const confirmed = await vscode2.window.showWarningMessage(
-            `Tess quer escrever em: ${filePath}`,
-            { modal: true },
-            "Permitir",
-            "Cancelar"
-          );
-          if (confirmed !== "Permitir") return `Escrita cancelada pelo utilizador: ${filePath}`;
-          try {
-            const folders = vscode2.workspace.workspaceFolders;
-            if (!folders) return "Erro: sem workspace aberto.";
-            const uri = vscode2.Uri.joinPath(folders[0].uri, filePath);
-            const encoder = new TextEncoder();
-            await vscode2.workspace.fs.writeFile(uri, encoder.encode(fileContent));
-            console.log(`[Tess Tools] Ficheiro escrito: ${filePath}`);
-            return `Ficheiro escrito com sucesso: ${filePath}`;
-          } catch (err) {
-            return `Erro ao escrever ficheiro: ${err.message}`;
-          }
-        }
-        case "list_dir": {
-          const dirPath = args ?? "";
-          try {
-            const folders = vscode2.workspace.workspaceFolders;
-            if (!folders) return "Erro: sem workspace aberto.";
-            const uri = vscode2.Uri.joinPath(folders[0].uri, dirPath);
-            const entries = await vscode2.workspace.fs.readDirectory(uri);
-            const lines = entries.map(([name, type]) => {
-              const icon = type === vscode2.FileType.Directory ? "\u{1F4C1}" : "\u{1F4C4}";
-              return `${icon} ${name}`;
-            });
-            return `Conte\xFAdo de "${dirPath || "/"}":
-${lines.join("\n")}`;
-          } catch (err) {
-            return `Erro ao listar directoria: ${err.message}`;
-          }
-        }
-        default:
-          return `Ferramenta desconhecida: "${toolName}". Ferramentas dispon\xEDveis: get_tree, get_file, write_file, list_dir`;
-      }
-    }
-    function getToolsSystemPrompt() {
-      return `
-## Ferramentas dispon\xEDveis (VS Code File System)
-
-Tens acesso ao sistema de ficheiros do projecto VS Code do utilizador.
-Para usar uma ferramenta, inclui a tag exacta na tua resposta \u2014 a extens\xE3o intercepta-a automaticamente.
-
-### Ferramentas
-
-| Tag | Descri\xE7\xE3o |
-|-----|-----------|
-| [TOOL:get_tree] | Ver a estrutura completa do projecto |
-| [TOOL:get_file:caminho/ficheiro.js] | Ler o conte\xFAdo de um ficheiro |
-| [TOOL:list_dir:caminho/pasta] | Listar o conte\xFAdo de uma directoria |
-| [TOOL:write_file:caminho/ficheiro.js:conteudo] | Escrever/editar um ficheiro (pede confirma\xE7\xE3o ao utilizador) |
-
-### Regras de uso
-
-1. Usa **get_tree** primeiro quando n\xE3o conheces a estrutura do projecto
-2. Usa **get_file** para ler ficheiros espec\xEDficos antes de os editar
-3. Usa **write_file** apenas quando tiveres o conte\xFAdo completo e correcto
-4. Pede apenas os ficheiros necess\xE1rios \u2014 n\xE3o pe\xE7as todos de uma vez
-5. Ap\xF3s receberes o resultado de uma ferramenta, analisa e responde ao utilizador
-6. As tags s\xE3o removidas da resposta vis\xEDvel \u2014 o utilizador n\xE3o as v\xEA
-`.trim();
-    }
-    module2.exports = { executeToolCalls, executeTool, getToolsSystemPrompt };
-  }
-});
-
 // src/chatHistory.js
 var require_chatHistory = __commonJS({
   "src/chatHistory.js"(exports2, module2) {
@@ -15631,7 +15716,7 @@ var require_chatHistory = __commonJS({
         _write([]);
       }
     }
-    function createSession(firstMessage) {
+    function createSession(firstMessage, model = "auto") {
       _assertInit();
       const sessions = _read();
       const id = crypto.randomUUID();
@@ -15639,6 +15724,8 @@ var require_chatHistory = __commonJS({
       const session = {
         id,
         title,
+        model,
+        // ← campo novo
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
         updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
         messages: []
@@ -15763,6 +15850,14 @@ var require_provider = __commonJS({
     var { buildHtml } = require_webview();
     var { executeTool } = require_tools();
     var chatHistory2 = require_chatHistory();
+    function _formatSessionDate(isoDate) {
+      const date = new Date(isoDate);
+      const now = /* @__PURE__ */ new Date();
+      if (date.toDateString() === now.toDateString()) {
+        return date.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
+      }
+      return date.toLocaleDateString("pt-PT", { day: "2-digit", month: "short" });
+    }
     var TessChatViewProvider2 = class {
       _view = null;
       _abortController = null;
@@ -15784,10 +15879,11 @@ var require_provider = __commonJS({
       loadSession(session) {
         if (!this._view) return;
         this._activeSessionId = session.id;
+        const lastModel = [...session.messages].reverse().find((m) => m.role === "assistant" && m.model)?.model ?? "auto";
         this._view.webview.postMessage({
           type: "restoreHistory",
           history: session.messages,
-          model: session.model ?? "auto"
+          model: lastModel
         });
       }
       insertCode() {
@@ -15835,12 +15931,6 @@ var require_provider = __commonJS({
           case "cancel":
             if (this._abortController) this._abortController.abort();
             break;
-          case "getCode":
-            this._view.webview.postMessage({
-              type: "insertCode",
-              code: getCurrentCode(this._lastEditor)
-            });
-            break;
           case "pickFile":
             await pickWorkspaceFiles(this._view);
             break;
@@ -15859,14 +15949,39 @@ var require_provider = __commonJS({
           case "newChat":
             this._activeSessionId = null;
             break;
+          case "openHistory":
+            await this._handleOpenHistory();
+            break;
+        }
+      }
+      async _handleOpenHistory() {
+        const sessions = chatHistory2.listSessions();
+        if (sessions.length === 0) {
+          vscode2.window.showInformationMessage("N\xE3o h\xE1 conversas guardadas.");
+          return;
+        }
+        const items = sessions.map((s) => ({
+          label: s.title,
+          description: _formatSessionDate(s.updatedAt),
+          id: s.id
+        }));
+        const picked = await vscode2.window.showQuickPick(items, {
+          placeHolder: "Selecione uma conversa para retomar",
+          matchOnDescription: true
+        });
+        if (picked) {
+          const session = chatHistory2.getSession(picked.id);
+          if (session) this.loadSession(session);
         }
       }
       async _handleSend(msg) {
         if (!this._activeSessionId) {
-          this._activeSessionId = chatHistory2.createSession(msg.userText);
+          this._activeSessionId = chatHistory2.createSession(msg.userText, msg.model);
           this._historyProvider?.refresh();
         }
-        chatHistory2.appendMessage(this._activeSessionId, "user", msg.userText, msg.model);
+        if (msg.userText) {
+          chatHistory2.appendMessage(this._activeSessionId, "user", msg.userText, msg.model);
+        }
         this._abortController = new AbortController();
         try {
           const response = await handleSend(
@@ -15885,14 +16000,18 @@ var require_provider = __commonJS({
         } catch (err) {
           if (err.name !== "AbortError") {
             console.error("[Tess] Erro no handleSend:", err);
+            this._view?.webview.postMessage({
+              type: "error",
+              text: "Erro inesperado: " + (err.message ?? String(err))
+            });
           }
         } finally {
           this._abortController = null;
         }
       }
       async _handleToolCall(msg) {
-        const { tool, args } = msg;
-        const result = await executeTool(tool, args);
+        const { tool, args, content } = msg;
+        const result = await executeTool(tool, args, content ?? null);
         this._view.webview.postMessage({ type: "toolResult", tool, args, result });
       }
       // ── Config & restore ─────────────────────────────────────────────────────

@@ -5,12 +5,14 @@
       "name": "Executar Extensão",
       "type": "extensionHost",
       "request": "launch",
+      "preLaunchTask": "copy-assets",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}"
       ],
       "outFiles": [
         "${workspaceFolder}/**/*.js",
-        "!${workspaceFolder}/node_modules/**"
+        "!${workspaceFolder}/node_modules/**",
+        "!${workspaceFolder}/dist/**"
       ]
     }
   ]

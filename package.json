@@ -33,16 +33,18 @@
     "tis angola"
   ],
   "activationEvents": [
-    "onView:tess.chatView"
+      "onView:tess.chatView",
+      "onView:fileTreeView",
+      "onView:tess.historyView"
   ],
-  "main": "./dist/extension.js",
+  "main": "./extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
           "id": "tis-sidebar",
           "title": "Tis.ai - Tess",
-          "icon": "tis_vector_vscode.svg"
+          "icon": "TIS_vector_vscode.svg"
         }
       ]
     },

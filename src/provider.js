@@ -11,6 +11,15 @@ const { buildHtml }                         = require('./webview');
 const { executeTool }                       = require('./tools');
 const chatHistory                           = require('./chatHistory');
 
+function _formatSessionDate(isoDate) {
+    const date = new Date(isoDate);
+    const now  = new Date();
+    if (date.toDateString() === now.toDateString()) {
+        return date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' });
+}
+
 class TessChatViewProvider {
     _view               = null;
     _abortController    = null;
@@ -38,12 +47,19 @@ class TessChatViewProvider {
 
         this._activeSessionId = session.id;
 
+        // Deriva o modelo da última mensagem do assistente
+        const lastModel = [...session.messages]
+            .reverse()
+            .find(m => m.role === 'assistant' && m.model)
+            ?.model ?? 'auto';
+
         this._view.webview.postMessage({
-            type: 'restoreHistory',
+            type:    'restoreHistory',
             history: session.messages,
-            model: session.model ?? 'auto'
+            model:   lastModel
         });
     }
+
 
     insertCode() {
         if (!this._view) return;
@@ -68,8 +84,11 @@ class TessChatViewProvider {
             ]
         };
 
+        // Gera nonce único por sessão
+        const nonce = require('crypto').randomBytes(16).toString('hex');
+
         const logoUri = webviewView.webview.asWebviewUri(
-            vscode.Uri.joinPath(this._context.extensionUri, 'tis_vector_vscode.svg')
+            vscode.Uri.joinPath(this._context.extensionUri, 'TIS_vector_vscode.svg')
         );
         const cssUri = webviewView.webview.asWebviewUri(
             vscode.Uri.joinPath(this._context.extensionUri, 'media', 'webview', 'webview.css')
@@ -78,7 +97,15 @@ class TessChatViewProvider {
             vscode.Uri.joinPath(this._context.extensionUri, 'media', 'webview', 'webview-script.js')
         );
 
-        webviewView.webview.html = buildHtml(logoUri, cssUri, scriptUri, MODELS, MODEL_LIMITS);
+        webviewView.webview.html = buildHtml(
+            logoUri,
+            cssUri,
+            scriptUri,
+            MODELS,
+            MODEL_LIMITS,
+            webviewView.webview.cspSource,  // ← valor correcto para a webview
+            nonce
+        );
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             await this._handleMessage(msg);
@@ -99,13 +126,6 @@ class TessChatViewProvider {
 
             case 'cancel':
                 if (this._abortController) this._abortController.abort();
-                break;
-
-            case 'getCode':
-                this._view.webview.postMessage({
-                    type: 'insertCode',
-                    code: getCurrentCode(this._lastEditor)
-                });
                 break;
 
             case 'pickFile':
@@ -130,18 +150,47 @@ class TessChatViewProvider {
             case 'newChat':
                 this._activeSessionId = null;
                 break;
+
+            case 'openHistory':
+                await this._handleOpenHistory();
+                break;
+        }
+    }
+
+    async _handleOpenHistory() {
+        const sessions = chatHistory.listSessions();
+        if (sessions.length === 0) {
+            vscode.window.showInformationMessage('Não há conversas guardadas.');
+            return;
+        }
+
+        const items = sessions.map(s => ({
+            label:       s.title,
+            description: _formatSessionDate(s.updatedAt),
+            id:          s.id,
+        }));
+
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder:        'Selecione uma conversa para retomar',
+            matchOnDescription: true,
+        });
+
+        if (picked) {
+            const session = chatHistory.getSession(picked.id);
+            if (session) this.loadSession(session);
         }
     }
 
     async _handleSend(msg) {
-        // Cria sessão nova se não existe
         if (!this._activeSessionId) {
-            this._activeSessionId = chatHistory.createSession(msg.userText);
+            this._activeSessionId = chatHistory.createSession(msg.userText, msg.model);
             this._historyProvider?.refresh();
         }
 
-        // Guarda mensagem do utilizador
-        chatHistory.appendMessage(this._activeSessionId, 'user', msg.userText, msg.model);
+        // Guarda mensagem do utilizador (ignorar chamadas de tool continuation sem texto)
+        if (msg.userText) {
+            chatHistory.appendMessage(this._activeSessionId, 'user', msg.userText, msg.model);
+        }
 
         this._abortController = new AbortController();
 
@@ -165,6 +214,10 @@ class TessChatViewProvider {
         } catch (err) {
             if (err.name !== 'AbortError') {
                 console.error('[Tess] Erro no handleSend:', err);
+                this._view?.webview.postMessage({
+                    type: 'error',
+                    text: 'Erro inesperado: ' + (err.message ?? String(err))
+                });
             }
         } finally {
             this._abortController = null;
@@ -172,8 +225,8 @@ class TessChatViewProvider {
     }
 
     async _handleToolCall(msg) {
-        const { tool, args } = msg;
-        const result = await executeTool(tool, args);
+        const { tool, args, content } = msg;
+        const result = await executeTool(tool, args, content ?? null);
         this._view.webview.postMessage({ type: 'toolResult', tool, args, result });
     }
 

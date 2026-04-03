@@ -1,12 +1,15 @@
-// c:\Developer\VS_Code_Tess_Extension\src\api.js
+// src/api.js
 'use strict';
 
 const vscode  = require('vscode');
 const axios   = require('axios');
 const { getWorkspaceTree, getCurrentCode } = require('./workspace');
+const { getToolsSystemPrompt }             = require('./tools');
 
-const BASE_URL        = 'https://api.tess.im';
-const REQUEST_TIMEOUT = 300000;
+const BASE_URL          = 'https://api.tess.im';
+const REQUEST_TIMEOUT   = 300000; // 5 min — timeout total da ligação axios
+const FIRST_BYTE_LIMIT  = 30000;  // 30s — tempo máximo até ao primeiro chunk
+const INACTIVITY_LIMIT  = 60000;  // 60s — tempo máximo sem novos dados após o stream ter começado
 
 // ─── Leitura do corpo de erro ─────────────────────────────────────────────────
 
@@ -42,7 +45,9 @@ async function postWithRetry(url, body, headers, signal) {
         });
     } catch (error) {
         if (error.response?.status === 429) {
-            const retryAfter = Number.parseInt(error.response.headers['retry-after'] ?? '5', 10);
+            const retryAfter = Number.parseInt(
+                error.response.headers['retry-after'] ?? '5', 10
+            );
             console.warn(`[Tess:api] Rate limit atingido. Aguardando ${retryAfter}s...`);
             await new Promise(res => setTimeout(res, retryAfter * 1000));
             return await axios.post(url, body, {
@@ -60,7 +65,7 @@ async function postWithRetry(url, body, headers, signal) {
 
 /**
  * Envia uma mensagem para a API Tess e faz stream da resposta para o WebView.
- * @returns {Promise<string|null>} Texto completo da resposta do assistente, ou null em caso de erro/cancelamento
+ * @returns {Promise<string|null>} Texto completo da resposta, ou null em erro/cancelamento
  */
 async function handleSend(view, userText, model, history, signal, lastEditor, isToolContinuation = false) {
     const config  = vscode.workspace.getConfiguration('tess');
@@ -76,31 +81,29 @@ async function handleSend(view, userText, model, history, signal, lastEditor, is
         return null;
     }
 
-    let fullUserText = userText;
-
-    if (!isToolContinuation && userText) {
-        // Inclui o código do editor activo como contexto
-        const codeInfo = getCurrentCode(lastEditor);
-        if (codeInfo) {
-            fullUserText = `${userText}\n\n\`\`\`${codeInfo.language}\n${codeInfo.code}\n\`\`\``;
-        }
-
-        // Na primeira mensagem da conversa, injecta silenciosamente a árvore do workspace
-        if (history.length === 0) {
-            const tree = await getWorkspaceTree();
-            if (tree) fullUserText = `${tree}\n\n---\n\n${fullUserText}`;
-        }
-    }
-
-    const messages = [
-        ...history.map(m => ({ role: m.role, content: m.content })),
-        { role: 'user', content: fullUserText || userText }
-    ];
-
-    const body = { messages, stream: true };
-    if (model !== 'auto') body.model = model;
-
     try {
+        let fullUserText = userText;
+
+        if (!isToolContinuation && userText) {
+            const codeInfo = getCurrentCode(lastEditor);
+            if (codeInfo) {
+                fullUserText = `${userText}\n\n\`\`\`${codeInfo.language}\n${codeInfo.code}\n\`\`\``;
+            }
+            if (history.length === 0) {
+                const tree = await getWorkspaceTree();
+                if (tree) fullUserText = `${tree}\n\n---\n\n${fullUserText}`;
+            }
+        }
+
+        const messages = [
+            { role: 'system', content: getToolsSystemPrompt() },
+            ...history.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content: fullUserText || userText }
+        ];
+
+        const body = { messages, stream: true };
+        if (model !== 'auto') body.model = model;
+
         console.log(`[Tess] → POST ${BASE_URL}/agents/${agentId}/openai/chat/completions (model: ${model})`);
         view.webview.postMessage({ type: 'startResponse' });
 
@@ -109,26 +112,68 @@ async function handleSend(view, userText, model, history, signal, lastEditor, is
             body,
             {
                 'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
+                'Content-Type':  'application/json'
             },
             signal
         );
 
         return await new Promise((resolve) => {
-            let buffer   = '';
-            let fullText = '';
+            let buffer        = '';
+            let fullText      = '';
+            let receivedChunk = false;
+            let doneSent      = false;
+
+            // ── Watchdog: 30s até ao primeiro chunk ─────────────────────────
+            const firstByteTimer = setTimeout(() => {
+                if (!receivedChunk) {
+                    console.warn('[Tess] Timeout: sem resposta em 30s');
+                    response.data.destroy();
+                    view.webview.postMessage({
+                        type: 'error',
+                        text: 'O modelo demorou demasiado a responder. Tente novamente.'
+                    });
+                    resolve(null);
+                }
+            }, FIRST_BYTE_LIMIT);
+
+            // ── Watchdog: 60s sem novos dados após o stream ter começado ────
+            let inactivityTimer = null;
+            function resetInactivity() {
+                clearTimeout(inactivityTimer);
+                inactivityTimer = setTimeout(() => {
+                    if (!doneSent) {
+                        console.warn('[Tess] Timeout de inactividade: stream parou sem fechar');
+                        response.data.destroy();
+                        view.webview.postMessage({
+                            type: 'error',
+                            text: 'A resposta parou a meio sem terminar. Tente novamente.'
+                        });
+                        resolve(null);
+                    }
+                }, INACTIVITY_LIMIT);
+            }
+
+            function finish(text) {
+                if (doneSent) return;
+                doneSent = true;
+                clearTimeout(firstByteTimer);
+                clearTimeout(inactivityTimer);
+                view.webview.postMessage({ type: 'endResponse' });
+                resolve(text || null);
+            }
 
             response.data.on('data', (chunk) => {
+                receivedChunk = true;
+                resetInactivity();
                 buffer += chunk.toString();
                 const lines = buffer.split('\n');
-                buffer = lines.pop();
+                buffer = lines.pop(); // guarda linha incompleta
 
                 for (const line of lines) {
                     if (!line.startsWith('data: ')) continue;
                     const raw = line.slice(6).trim();
                     if (raw === '[DONE]') {
-                        view.webview.postMessage({ type: 'endResponse' });
-                        resolve(fullText || null);
+                        finish(fullText);
                         return;
                     }
                     try {
@@ -141,18 +186,36 @@ async function handleSend(view, userText, model, history, signal, lastEditor, is
                         if (parsed.usage) {
                             view.webview.postMessage({ type: 'usage', usage: parsed.usage });
                         }
-                    } catch { /* chunk incompleto */ }
+                    } catch { /* chunk incompleto — ignorar */ }
                 }
             });
 
             response.data.on('end', () => {
-                view.webview.postMessage({ type: 'endResponse' });
-                resolve(fullText || null);
+                // Processa o que ficou no buffer (stream sem \n final)
+                if (buffer.startsWith('data: ')) {
+                    const raw = buffer.slice(6).trim();
+                    if (raw && raw !== '[DONE]') {
+                        try {
+                            const parsed = JSON.parse(raw);
+                            const text   = parsed.choices?.[0]?.delta?.content;
+                            if (text) {
+                                fullText += text;
+                                view.webview.postMessage({ type: 'chunk', text });
+                            }
+                        } catch { /* ignorar */ }
+                    }
+                }
+                finish(fullText);
             });
 
             response.data.on('error', (err) => {
+                clearTimeout(firstByteTimer);
+                clearTimeout(inactivityTimer);
                 console.error('[Tess] Erro de stream:', err.message);
-                view.webview.postMessage({ type: 'error', text: `Erro de ligação: ${err.message}` });
+                view.webview.postMessage({
+                    type: 'error',
+                    text: `Erro de ligação: ${err.message}`
+                });
                 resolve(null);
             });
         });

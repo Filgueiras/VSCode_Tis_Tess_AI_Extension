@@ -44,7 +44,9 @@ npx esbuild extension.js \
 - `--minify` → reduz o tamanho do ficheiro final
 - `--outfile=dist/extension.js` → ficheiro de saída separado do source
 
-### 3. Actualizar o package.json para apontar para o bundle
+### 3. Actualizar temporariamente o package.json para apontar para o bundle
+
+> ⚠️ Reverter para `"./extension.js"` após publicar — este valor é só para packaging.
 
 ```json
 {

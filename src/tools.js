@@ -46,10 +46,11 @@ async function executeToolCalls(text, view) {
 /**
  * Executa uma ferramenta específica e retorna o resultado formatado.
  * @param {string} toolName - Nome da ferramenta
- * @param {string|null} args - Argumentos da ferramenta
+ * @param {string|null} args - Argumentos da ferramenta (caminho para write/edit_file)
+ * @param {string|null} [content] - Conteúdo do ficheiro (extraído do bloco de código anterior)
  * @returns {Promise<string>} Resultado formatado para injectar no histórico
  */
-async function executeTool(toolName, args) {
+async function executeTool(toolName, args, content = null) {
     console.log(`[Tess Tools] Executando: ${toolName}${args ? ':' + args : ''}`);
 
     switch (toolName) {
@@ -67,37 +68,43 @@ async function executeTool(toolName, args) {
             return `\`\`\`${language}\n// ${path}\n${content}\n\`\`\``;
         }
 
-        case 'write_file': {
-            if (!args) return 'Erro: write_file requer caminho e conteúdo.';
+        case 'write_file':
+        case 'edit_file': {
+            if (!args) return `Erro: ${toolName} requer o caminho do ficheiro.`;
+            if (!content) return `Erro: ${toolName} não recebeu conteúdo — escreve o bloco de código antes da tag.`;
 
-            // Formato: caminho:conteudo (o conteúdo pode conter ":")
-            const colonIndex = args.indexOf(':');
-            if (colonIndex === -1) return 'Erro: formato inválido. Use [TOOL:write_file:caminho:conteudo]';
+            const filePath = args.trim();
+            const folders  = vscode.workspace.workspaceFolders;
+            if (!folders) return 'Erro: sem workspace aberto.';
 
-            const filePath = args.slice(0, colonIndex);
-            const fileContent = args.slice(colonIndex + 1);
+            const uri = vscode.Uri.joinPath(folders[0].uri, filePath);
+
+            // Determina se é criação ou edição para a mensagem de confirmação
+            let fileExists = false;
+            try { await vscode.workspace.fs.stat(uri); fileExists = true; } catch { /* novo */ }
+            const action = fileExists ? 'editar' : 'criar';
 
             const confirmed = await vscode.window.showWarningMessage(
-                `Tess quer escrever em: ${filePath}`,
+                `Tess quer ${action}: ${filePath}`,
                 { modal: true },
                 'Permitir',
                 'Cancelar'
             );
 
-            if (confirmed !== 'Permitir') return `Escrita cancelada pelo utilizador: ${filePath}`;
+            if (confirmed !== 'Permitir') return `Operação cancelada pelo utilizador: ${filePath}`;
 
             try {
-                const folders = vscode.workspace.workspaceFolders;
-                if (!folders) return 'Erro: sem workspace aberto.';
-
-                const uri = vscode.Uri.joinPath(folders[0].uri, filePath);
                 const encoder = new TextEncoder();
-                await vscode.workspace.fs.writeFile(uri, encoder.encode(fileContent));
+                await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
 
-                console.log(`[Tess Tools] Ficheiro escrito: ${filePath}`);
-                return `Ficheiro escrito com sucesso: ${filePath}`;
+                // Abre o ficheiro no editor para o utilizador ver o resultado
+                const doc = await vscode.workspace.openTextDocument(uri);
+                await vscode.window.showTextDocument(doc, { preview: true, preserveFocus: true });
+
+                console.log(`[Tess Tools] Ficheiro ${action}: ${filePath}`);
+                return `Ficheiro ${action === 'criar' ? 'criado' : 'editado'} com sucesso: ${filePath}`;
             } catch (err) {
-                return `Erro ao escrever ficheiro: ${err.message}`;
+                return `Erro ao ${action} ficheiro: ${err.message}`;
             }
         }
 
@@ -121,7 +128,7 @@ async function executeTool(toolName, args) {
         }
 
         default:
-            return `Ferramenta desconhecida: "${toolName}". Ferramentas disponíveis: get_tree, get_file, write_file, list_dir`;
+            return `Ferramenta desconhecida: "${toolName}". Ferramentas disponíveis: get_tree, get_file, list_dir, write_file, edit_file`;
     }
 }
 
@@ -142,16 +149,30 @@ Para usar uma ferramenta, inclui a tag exacta na tua resposta — a extensão in
 
 | Tag | Descrição |
 |-----|-----------|
-| [TOOL:get_tree] | Ver a estrutura completa do projecto |
-| [TOOL:get_file:caminho/ficheiro.js] | Ler o conteúdo de um ficheiro |
-| [TOOL:list_dir:caminho/pasta] | Listar o conteúdo de uma directoria |
-| [TOOL:write_file:caminho/ficheiro.js:conteudo] | Escrever/editar um ficheiro (pede confirmação ao utilizador) |
+| \`[TOOL:get_tree]\` | Ver a estrutura completa do projecto |
+| \`[TOOL:get_file:caminho/ficheiro.js]\` | Ler o conteúdo de um ficheiro |
+| \`[TOOL:list_dir:caminho/pasta]\` | Listar o conteúdo de uma directoria |
+| \`[TOOL:write_file:caminho/ficheiro.js]\` | Criar um ficheiro novo (pede confirmação) |
+| \`[TOOL:edit_file:caminho/ficheiro.js]\` | Editar um ficheiro existente (pede confirmação) |
 
-### Regras de uso
+### Protocolo para write_file e edit_file
+
+Para criar ou editar um ficheiro, segue **obrigatoriamente** este padrão:
+1. Escreve o conteúdo completo num bloco de código (\`\`\`linguagem ... \`\`\`)
+2. Imediatamente a seguir, coloca a tag da ferramenta com o caminho
+
+Exemplo:
+\`\`\`javascript
+// conteúdo completo do ficheiro
+function hello() { return 'world'; }
+\`\`\`
+[TOOL:write_file:src/utils.js]
+
+### Regras
 
 1. Usa **get_tree** primeiro quando não conheces a estrutura do projecto
-2. Usa **get_file** para ler ficheiros específicos antes de os editar
-3. Usa **write_file** apenas quando tiveres o conteúdo completo e correcto
+2. Usa **get_file** para ler ficheiros antes de os editar
+3. O conteúdo do bloco de código deve ser o ficheiro completo, nunca parcial
 4. Pede apenas os ficheiros necessários — não peças todos de uma vez
 5. Após receberes o resultado de uma ferramenta, analisa e responde ao utilizador
 6. As tags são removidas da resposta visível — o utilizador não as vê

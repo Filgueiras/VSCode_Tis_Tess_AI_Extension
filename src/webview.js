@@ -1,21 +1,10 @@
 'use strict';
 
-/**
- * Gera o HTML completo do WebView.
- *
- * @param {import('vscode').Uri} logoUri    - URI do logótipo SVG
- * @param {import('vscode').Uri} cssUri     - URI do webview.css
- * @param {import('vscode').Uri} scriptUri  - URI do webview-script.js
- * @param {Array<{id:string, label:string}>} models - Lista de modelos para o <select>
- * @param {Object} modelLimits - Mapa modelId → limite de tokens
- * @returns {string} HTML completo
- */
-function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits) {
+function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits, cspSource, nonce) {
     const modelOptions = models
         .map(m => `<option value="${m.id}">${m.label}</option>`)
         .join('');
 
-    // Passa os limites de contexto para o script do WebView como variável global
     const limitsJson = JSON.stringify(modelLimits);
 
     return `<!DOCTYPE html>
@@ -25,10 +14,10 @@ function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
-                 style-src 'unsafe-inline' https://*.vscode-cdn.net;
-                 script-src 'unsafe-inline' https://*.vscode-cdn.net;
-                 img-src data: https://*.vscode-cdn.net;
-                 connect-src https://api.tess.im;">
+                 style-src ${cspSource} 'unsafe-inline';
+                 script-src ${cspSource} 'nonce-${nonce}';
+                 img-src ${cspSource} data:;
+                 connect-src https://api.tess.im https://tess.im;">
   <title>Tess AI</title>
   <link rel="stylesheet" href="${cssUri}">
 </head>
@@ -40,6 +29,7 @@ function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits) {
       <label>Modelo:</label>
       <select id="modelSelect">${modelOptions}</select>
     </div>
+    <button class="btn-ghost" id="historyBtn">Histórico</button>
     <button class="btn-ghost" id="clearBtn">Limpar</button>
   </div>
 
@@ -75,11 +65,11 @@ function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits) {
     <div id="hint">Enter para enviar · Shift+Enter para nova linha</div>
   </div>
 
-  <!-- ── Variáveis globais para o script ──────────────────────────────────── -->
-  <script>window.MODEL_LIMITS = ${limitsJson};</script>
+  <!-- ── Variáveis globais ─────────────────────────────────────────────────── -->
+  <script nonce="${nonce}">window.MODEL_LIMITS = ${limitsJson};</script>
 
   <!-- ── Script principal ─────────────────────────────────────────────────── -->
-  <script src="${scriptUri}"></script>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
 
 </body>
 </html>`;

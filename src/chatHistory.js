@@ -45,23 +45,23 @@ function init(context) {
  * @param {string} firstMessage - Primeira mensagem do utilizador
  * @returns {{ id: string, title: string, createdAt: string }}
  */
-function createSession(firstMessage) {
+function createSession(firstMessage, model = 'auto') {
     _assertInit();
 
     const sessions = _read();
     const id       = crypto.randomUUID();
     const title    = _generateTitle(firstMessage);
 
-    /** @type {ChatSession} */
     const session = {
         id,
         title,
+        model,                               // ← campo novo
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         messages:  [],
     };
 
-    sessions.unshift(session); // mais recente primeiro
+    sessions.unshift(session);
     _write(sessions);
 
     return { id, title, createdAt: session.createdAt };

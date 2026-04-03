@@ -307,9 +307,6 @@ function renderMarkdown(text) {
                 'transition:opacity 0.15s ease'
             ].join(';');
 
-            wrapper.addEventListener('mouseenter', () => { copyBtn.style.opacity = '1'; });
-            wrapper.addEventListener('mouseleave', () => { copyBtn.style.opacity = '0'; });
-
             copyBtn.addEventListener('click', () => {
                 const doSuccess = () => {
                     copyBtn.textContent = '\u2713 Copiado';
@@ -328,9 +325,40 @@ function renderMarkdown(text) {
 
             wrapper.appendChild(pre);
             wrapper.appendChild(copyBtn);
+
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent   = 'Guardar';
+            saveBtn.style.cssText = [
+                'position:absolute',
+                'top:6px',
+                'right:70px',
+                'padding:2px 8px',
+                'font-size:10px',
+                'cursor:pointer',
+                'border-radius:3px',
+                'border:1px solid var(--vscode-panel-border)',
+                'background:var(--vscode-editor-background)',
+                'color:var(--vscode-descriptionForeground)',
+                'opacity:0',
+                'transition:opacity 0.15s ease'
+            ].join(';');
+
+            saveBtn.addEventListener('click', () => {
+                const ext      = lang || 'txt';
+                const filename = 'snippet.' + ext;
+                vscode.postMessage({ type: 'saveFile', filename, content: code });
+            });
+
+            wrapper.appendChild(saveBtn);
+
+            wrapper.addEventListener('mouseenter', () => { copyBtn.style.opacity = '1'; saveBtn.style.opacity = '1'; });
+            wrapper.addEventListener('mouseleave', () => { copyBtn.style.opacity = '0'; saveBtn.style.opacity = '0'; });
+
             container.appendChild(wrapper);
             continue;
         }
+
+ 
 
         // ── Texto normal — linha a linha ─────────────────────────────────────
         const lines = part.content.split('\n');

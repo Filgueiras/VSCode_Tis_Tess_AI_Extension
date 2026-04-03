@@ -119,6 +119,13 @@ class TessChatViewProvider {
                 this._activeSessionId = null;
                 break;
 
+            case 'saveFile':
+                vscode.commands.executeCommand('tess.saveFile', {
+                    filename: msg.filename,
+                    content:  msg.content
+                });
+            break;
+
             // ── Histórico inline (drawer no WebView) ─────────────────────
             case 'getHistory':
                 this._sendHistoryList();
@@ -127,6 +134,8 @@ class TessChatViewProvider {
             case 'loadSession':
                 this._loadSessionById(msg.id);
                 break;
+
+
         }
     }
 

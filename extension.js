@@ -29,6 +29,17 @@ function activate(context) {
 
         vscode.commands.registerCommand('tess.openSettings', () => {
             vscode.commands.executeCommand('workbench.action.openSettings', 'tess');
+        }),
+
+        vscode.commands.registerCommand('tess.saveFile', async (args) => {
+            const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+            const uri = await vscode.window.showSaveDialog({
+                defaultUri: vscode.Uri.file(folder + '/' + args.filename),
+                filters: { 'All Files': ['*'] }
+            });
+            if (!uri) return;
+            await vscode.workspace.fs.writeFile(uri, Buffer.from(args.content, 'utf8'));
+            vscode.window.showInformationMessage('Ficheiro guardado: ' + uri.fsPath);
         })
 
     );

@@ -114,11 +114,7 @@ messagesWithContext = [
 ```
 
 PS C:\Developer\VS_Code_Tess_Extension> $body = '{"messages":[{"role":"user","content":"ola"}],"stream":true}'
-PS C:\Developer\VS_Code_Tess_Extension> $api_key=629507|Xrh5qjDlLOaXGc2oQGctDtqoPa2rOfewnGuWZjimfb9a3c20
-Xrh5qjDlLOaXGc2oQGctDtqoPa2rOfewnGuWZjimfb9a3c20: The term 'Xrh5qjDlLOaXGc2oQGctDtqoPa2rOfewnGuWZjimfb9a3c20' is not recognized as a name of a cmdlet, function, script file, or executable program.
-Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
-PS C:\Developer\VS_Code_Tess_Extension> $api_key='629507|Xrh5qjDlLOaXGc2oQGctDtqoPa2rOfewnGuWZjimfb9a3
-c20'
+PS C:\Developer\VS_Code_Tess_Extension> $api_key='chave entre aspas'
 PS C:\Developer\VS_Code_Tess_Extension> $link='https://api.tess.im/agents/42551/openai/chat/completions'  
 PS C:\Developer\VS_Code_Tess_Extension> curl.exe -N -X POST $link `
 >>   -H "Authorization: Bearer $api_key" `

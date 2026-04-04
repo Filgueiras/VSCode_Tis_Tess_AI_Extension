@@ -79,6 +79,9 @@ class TessViewProvider {
     // ─── Ready ───────────────────────────────────────────────────────────────
 
     async _onWebviewReady() {
+        // Cancela qualquer stream anterior (p.ex. se o WebView foi recriado a meio de uma resposta)
+        cancelStream();
+
         const cfg     = vscode.workspace.getConfiguration('tess');
         const apiKey  = cfg.get('apiKey', '');
         const agentId = cfg.get('agentId', '');
@@ -121,10 +124,10 @@ class TessViewProvider {
             const systemParts = [];
 
             if (isFirst) {
-                const tree = getWorkspaceTree();
+                const tree = await getWorkspaceTree();
                 if (tree) systemParts.push('Estrutura do projecto:\n' + tree);
             }
-            if (code) systemParts.push('Ficheiro activo:\n' + code);
+            if (code) systemParts.push(`Ficheiro activo (${code.language}):\n\`\`\`${code.language}\n${code.code}\n\`\`\``);
 
             if (systemParts.length > 0) {
                 messagesWithContext = [
@@ -212,7 +215,14 @@ class TessViewProvider {
     // ─── Tool Calls ──────────────────────────────────────────────────────────
 
     async _handleToolCall(msg) {
-        const result = await executeTool(msg.tool, msg.args, msg.content);
+        let result;
+        try {
+            result = await executeTool(msg.tool, msg.args, msg.content);
+        } catch (err) {
+            console.error('[Tess] Erro em _handleToolCall:', err.message);
+            result = `Erro ao executar ferramenta ${msg.tool}: ${err.message}`;
+        }
+        // Sempre envia toolResult — garante que o webview nunca fica bloqueado
         this._view.webview.postMessage({
             type:   'toolResult',
             tool:   msg.tool,

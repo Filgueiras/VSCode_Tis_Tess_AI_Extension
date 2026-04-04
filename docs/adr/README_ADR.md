@@ -31,3 +31,4 @@ Um ADR documenta uma decisão técnica significativa: o contexto que a motivou, 
 | [ADR-021](ADR-021-convencao-webview-parametro.md) | Convenção de parâmetro Webview nas funções de workspace | Aceite |
 | [ADR-022](ADR-022-integracao-agente-tools-alma-corpo.md) | Integração agente-ferramentas: ligar a alma ao corpo | Aceite |
 | [ADR-023](ADR-023-feedback-visual-tools-e-ressinc.md) | Feedback visual de tool calls e ressincronização de sessão | Aceite |
+| [ADR-024](ADR-024-deteccao-recuperacao-dessincronia.md) | Detecção e recuperação automática de dessincronia em tool calls | Aceite |

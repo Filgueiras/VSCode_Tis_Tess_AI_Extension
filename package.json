@@ -2,7 +2,7 @@
   "name": "tis-tess",
   "displayName": "Tis.ai - Powered by Tess",
   "description": "Assistente de código com IA para VS Code — powered by TIS to use Tess.im",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "publisher": "tis-angola",
   "author": {
     "name": "Marco A. F. Guimarães",

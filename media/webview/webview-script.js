@@ -13,6 +13,7 @@ const codeBtn        = document.getElementById('codeBtn');
 const contextBtn     = document.getElementById('contextBtn');
 const historyBtn     = document.getElementById('historyBtn');
 const clearBtn       = document.getElementById('clearBtn');
+const resyncBtn      = document.getElementById('resyncBtn');
 const watermarkEl    = document.getElementById('watermark');
 const modelRowEl     = document.getElementById('modelRow');
 const contextFillEl  = document.getElementById('contextFill');
@@ -26,6 +27,37 @@ let waiting           = false;
 let actualTokens      = null;
 let configured        = false;
 let historyDrawerOpen = false;
+let _pendingTools     = 0;
+let _toolResults      = [];
+let _toolTimeout      = null;
+
+// ─── Gestão de estado de ferramentas ─────────────────────────────────────────
+
+/** Limpa todo o estado de ferramentas pendentes e cancela o watchdog. */
+function _resetToolState() {
+    _pendingTools = 0;
+    _toolResults  = [];
+    if (_toolTimeout) { clearTimeout(_toolTimeout); _toolTimeout = null; }
+}
+
+/**
+ * Inicia um watchdog de 45s: se nem todos os toolResults chegarem, detecta
+ * a dessincronia, liberta a UI e avisa o utilizador.
+ */
+function _startToolTimeout() {
+    if (_toolTimeout) clearTimeout(_toolTimeout);
+    _toolTimeout = setTimeout(() => {
+        if (_pendingTools > 0) {
+            _resetToolState();
+            if (assistantBubble) {
+                assistantBubble.closest('.msg-row')?.remove();
+                assistantBubble = null;
+            }
+            setWaiting(false);
+            appendError('⚠️ Tempo esgotado a aguardar resposta das ferramentas. A conversa pode estar dessincronizada — use "🔄 Log Ressinc" para retomar.');
+        }
+    }, 45_000);
+}
 
 // ─── Drawer de Histórico ─────────────────────────────────────────────────────
 
@@ -762,11 +794,19 @@ function appendError(text) {
 
 function appendToolNotice(tool, args) {
     removeEmpty();
+    const labels = {
+        'get_tree':   '🌳 A ler estrutura do projecto',
+        'get_file':   '📖 A ler ficheiro',
+        'list_dir':   '📁 A listar directoria',
+        'write_file': '✏️ A escrever ficheiro',
+        'edit_file':  '✏️ A editar ficheiro',
+    };
+    const label = labels[tool] || ('🔧 A executar: ' + tool);
     const row    = document.createElement('div');
     row.className = 'msg-row tool';
     const bubble = document.createElement('div');
     bubble.className   = 'msg-bubble';
-    bubble.textContent = '\u{1F527} A executar ferramenta: ' + tool + (args ? ' \u2192 ' + args : '');
+    bubble.textContent = label + (args ? ' → ' + args : '');
     row.appendChild(bubble);
     messagesEl.appendChild(row);
     scrollBottom();
@@ -849,7 +889,8 @@ function finalizeAssistant() {
                 assistantBubble.closest('.msg-row').remove();
             }
             assistantBubble = null;
-            setWaiting(false);
+            _pendingTools = toolMatches.length;
+            _toolResults  = [];
 
             for (const match of toolMatches) {
                 const tool    = match[1];
@@ -857,8 +898,10 @@ function finalizeAssistant() {
                 const content = (tool === 'write_file' || tool === 'edit_file')
                     ? _extractLastCodeBlock(rawText, match.index)
                     : null;
+                appendToolNotice(tool, args);
                 vscode.postMessage({ type: 'toolCall', tool, args, content });
             }
+            _startToolTimeout();
             return;
         }
 
@@ -939,6 +982,10 @@ inputEl.addEventListener('input', () => {
 
 codeBtn.addEventListener('click', () => vscode.postMessage({ type: 'pickFile' }));
 contextBtn.addEventListener('click', () => vscode.postMessage({ type: 'getWorkspaceContext' }));
+resyncBtn.addEventListener('click', () => {
+    if (waiting) return;
+    vscode.postMessage({ type: 'resync' });
+});
 
 // ── Histórico: abre/fecha o drawer inline ────────────────────────────────────
 historyBtn.addEventListener('click', () => {
@@ -982,7 +1029,18 @@ window.addEventListener('message', ({ data }) => {
 
         case 'endResponse':
         case 'cancelled':
-            finalizeAssistant();
+            if (_pendingTools > 0) {
+                // Dessinc: o stream terminou enquanto ainda havia ferramentas a executar
+                _resetToolState();
+                if (assistantBubble) {
+                    assistantBubble.closest('.msg-row')?.remove();
+                    assistantBubble = null;
+                }
+                setWaiting(false);
+                appendError('⚠️ A conversa perdeu sincronia (stream terminou durante execução de ferramentas). Use "🔄 Log Ressinc" para retomar.');
+            } else {
+                finalizeAssistant();
+            }
             break;
 
         case 'usage':
@@ -993,6 +1051,7 @@ window.addEventListener('message', ({ data }) => {
             break;
 
         case 'error':
+            _resetToolState();
             if (assistantBubble) {
                 assistantBubble.closest('.msg-row').remove();
                 assistantBubble = null;
@@ -1011,12 +1070,39 @@ window.addEventListener('message', ({ data }) => {
         case 'toolResult': {
             const toolContent = '[Resultado da ferramenta ' + data.tool
                 + (data.args ? ': ' + data.args : '') + ']\n\n' + data.result;
-            history.push({ role: 'user', content: toolContent });
+            _toolResults.push(toolContent);
+
+            // Aguarda que todos os resultados pendentes cheguem antes de reenviar
+            if (_toolResults.length < _pendingTools) break;
+
+            const combined = _toolResults.join('\n\n---\n\n');
+            _resetToolState();
+
+            history.push({ role: 'user', content: combined });
             setWaiting(true);
             beginAssistantBubble();
             vscode.postMessage({
                 type:     'send',
-                userText: toolContent,
+                userText: combined,
+                model:    modelSelect.value,
+                history:  history.slice(0, -1),
+                isTool:   true
+            });
+            break;
+        }
+
+        case 'resyncData': {
+            if (!data.log) {
+                appendError('Ficheiro .tess-log.md não encontrado. Execute algumas acções com ferramentas primeiro.');
+                break;
+            }
+            const logMsg = '[Log de acções anteriores para ressincronização]\n\n' + data.log;
+            history.push({ role: 'user', content: logMsg });
+            setWaiting(true);
+            beginAssistantBubble();
+            vscode.postMessage({
+                type:     'send',
+                userText: logMsg,
                 model:    modelSelect.value,
                 history:  history.slice(0, -1),
                 isTool:   true

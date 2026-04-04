@@ -15957,6 +15957,7 @@ var require_provider = __commonJS({
       }
       // ─── Ready ───────────────────────────────────────────────────────────────
       async _onWebviewReady() {
+        cancelStream();
         const cfg = vscode2.workspace.getConfiguration("tess");
         const apiKey = cfg.get("apiKey", "");
         const agentId = cfg.get("agentId", "");
@@ -15991,10 +15992,13 @@ var require_provider = __commonJS({
           const code = getCurrentCode();
           const systemParts = [];
           if (isFirst) {
-            const tree = getWorkspaceTree();
+            const tree = await getWorkspaceTree();
             if (tree) systemParts.push("Estrutura do projecto:\n" + tree);
           }
-          if (code) systemParts.push("Ficheiro activo:\n" + code);
+          if (code) systemParts.push(`Ficheiro activo (${code.language}):
+\`\`\`${code.language}
+${code.code}
+\`\`\``);
           if (systemParts.length > 0) {
             messagesWithContext = [
               { role: "user", content: systemParts.join("\n\n") },
@@ -16069,7 +16073,13 @@ var require_provider = __commonJS({
       }
       // ─── Tool Calls ──────────────────────────────────────────────────────────
       async _handleToolCall(msg) {
-        const result = await executeTool(msg.tool, msg.args, msg.content);
+        let result;
+        try {
+          result = await executeTool(msg.tool, msg.args, msg.content);
+        } catch (err) {
+          console.error("[Tess] Erro em _handleToolCall:", err.message);
+          result = `Erro ao executar ferramenta ${msg.tool}: ${err.message}`;
+        }
         this._view.webview.postMessage({
           type: "toolResult",
           tool: msg.tool,

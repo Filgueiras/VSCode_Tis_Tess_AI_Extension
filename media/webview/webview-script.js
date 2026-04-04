@@ -11,7 +11,6 @@ const sendBtn        = document.getElementById('sendBtn');
 const modelSelect    = document.getElementById('modelSelect');
 const codeBtn        = document.getElementById('codeBtn');
 const contextBtn     = document.getElementById('contextBtn');
-const resyncBtn      = document.getElementById('resyncBtn');
 const historyBtn     = document.getElementById('historyBtn');
 const clearBtn       = document.getElementById('clearBtn');
 const watermarkEl    = document.getElementById('watermark');
@@ -27,7 +26,6 @@ let waiting           = false;
 let actualTokens      = null;
 let configured        = false;
 let historyDrawerOpen = false;
-let pendingToolCalls  = 0;
 
 // ─── Drawer de Histórico ─────────────────────────────────────────────────────
 
@@ -762,24 +760,6 @@ function appendError(text) {
     scrollBottom();
 }
 
-function appendSyncWarning() {
-    removeEmpty();
-    const row    = document.createElement('div');
-    row.className = 'msg-row tool';
-    const bubble = document.createElement('div');
-    bubble.className = 'msg-bubble';
-    bubble.style.cssText = 'border-left: 3px solid var(--vscode-errorForeground); padding-left: 8px;';
-    bubble.innerHTML = '\u26A0\uFE0F Perda de sincronia detectada — algumas acções podem não ter completado. '
-        + '<a href="#" id="autoResyncLink" style="color:var(--vscode-textLink-foreground)">Ressincronizar agora?</a>';
-    row.appendChild(bubble);
-    messagesEl.appendChild(row);
-    scrollBottom();
-    document.getElementById('autoResyncLink')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        vscode.postMessage({ type: 'resync' });
-    });
-}
-
 function appendToolNotice(tool, args) {
     removeEmpty();
     const row    = document.createElement('div');
@@ -877,8 +857,6 @@ function finalizeAssistant() {
                 const content = (tool === 'write_file' || tool === 'edit_file')
                     ? _extractLastCodeBlock(rawText, match.index)
                     : null;
-                appendToolNotice(tool, args);
-                pendingToolCalls++;
                 vscode.postMessage({ type: 'toolCall', tool, args, content });
             }
             return;
@@ -961,7 +939,6 @@ inputEl.addEventListener('input', () => {
 
 codeBtn.addEventListener('click', () => vscode.postMessage({ type: 'pickFile' }));
 contextBtn.addEventListener('click', () => vscode.postMessage({ type: 'getWorkspaceContext' }));
-resyncBtn.addEventListener('click', () => vscode.postMessage({ type: 'resync' }));
 
 // ── Histórico: abre/fecha o drawer inline ────────────────────────────────────
 historyBtn.addEventListener('click', () => {
@@ -1004,15 +981,8 @@ window.addEventListener('message', ({ data }) => {
             break;
 
         case 'endResponse':
-            finalizeAssistant();
-            break;
-
         case 'cancelled':
             finalizeAssistant();
-            if (pendingToolCalls > 0) {
-                appendSyncWarning();
-                pendingToolCalls = 0;
-            }
             break;
 
         case 'usage':
@@ -1031,15 +1001,14 @@ window.addEventListener('message', ({ data }) => {
                 }
             }
             appendError(data.text);
-            if (pendingToolCalls > 0) {
-                appendSyncWarning();
-                pendingToolCalls = 0;
-            }
             setWaiting(false);
             break;
 
+        case 'toolCall':
+            appendToolNotice(data.tool, data.args);
+            break;
+
         case 'toolResult': {
-            pendingToolCalls = Math.max(0, pendingToolCalls - 1);
             const toolContent = '[Resultado da ferramenta ' + data.tool
                 + (data.args ? ': ' + data.args : '') + ']\n\n' + data.result;
             history.push({ role: 'user', content: toolContent });
@@ -1052,22 +1021,6 @@ window.addEventListener('message', ({ data }) => {
                 history:  history.slice(0, -1),
                 isTool:   true
             });
-            break;
-        }
-
-        case 'resyncData': {
-            if (!data.log) {
-                appendError('Nenhum log de acções encontrado (.tess-log.md). Execute algumas acções primeiro.');
-                break;
-            }
-            const resyncMsg = 'Perdi a sincronia contigo. Aqui está o log das acções já executadas nesta sessão:\n\n'
-                + data.log
-                + '\n\nCom base neste log, indica-me o que já foi feito e o que ainda falta concluir.';
-            appendMessage('user', resyncMsg);
-            history.push({ role: 'user', content: resyncMsg });
-            setWaiting(true);
-            beginAssistantBubble();
-            vscode.postMessage({ type: 'send', userText: resyncMsg, model: modelSelect.value, history: history.slice(0, -1) });
             break;
         }
 

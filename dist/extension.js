@@ -15506,6 +15506,7 @@ var require_webview = __commonJS({
     <div id="actionButtons">
       <button class="btn-ghost" id="codeBtn">\u{1F4CE} Adicionar ficheiros</button>
       <button class="btn-ghost" id="contextBtn">\u{1F5C2}\uFE0F Contexto do projecto</button>
+      <button class="btn-ghost" id="resyncBtn" title="Injeta o log de ac\xE7\xF5es no chat para ressincronizar o agente">\u{1F504} Log Ressinc</button>
     </div>
     <div id="inputRow">
       <textarea
@@ -15540,6 +15541,27 @@ var require_tools = __commonJS({
   "src/tools.js"(exports2, module2) {
     var vscode2 = require("vscode");
     var { readWorkspaceFile, getWorkspaceTree } = require_workspace();
+    async function appendToActionLog(toolName, args, result) {
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders) return;
+      const now = /* @__PURE__ */ new Date();
+      const timestamp = now.toISOString().replace("T", " ").slice(0, 19);
+      const status = typeof result === "string" && result.startsWith("Erro") ? "\u274C" : "\u2705";
+      const argStr = args ? `: ${args}` : "";
+      const line = `${status} [${timestamp}] ${toolName}${argStr} \u2192 ${result.split("\n")[0]}
+`;
+      const logUri = vscode2.Uri.joinPath(folders[0].uri, ".tess-log.md");
+      let existing = "";
+      try {
+        const raw = await vscode2.workspace.fs.readFile(logUri);
+        existing = new TextDecoder().decode(raw);
+      } catch {
+      }
+      if (!existing) {
+        existing = "# Tess \u2014 Log de Ac\xE7\xF5es\n\n";
+      }
+      await vscode2.workspace.fs.writeFile(logUri, new TextEncoder().encode(existing + line));
+    }
     var TOOL_REGEX = /\[TOOL:(\w+)(?::([^\]]+))?\]/g;
     async function executeToolCalls(text, view) {
       const matches = [...text.matchAll(TOOL_REGEX)];
@@ -15562,15 +15584,21 @@ var require_tools = __commonJS({
       switch (toolName) {
         case "get_tree": {
           const tree = await getWorkspaceTree();
-          if (!tree) return "Erro: sem workspace aberto ou pasta vazia.";
-          return tree;
+          const result = tree ?? "Erro: sem workspace aberto ou pasta vazia.";
+          await appendToActionLog(toolName, args, result.slice(0, 80));
+          return result;
         }
         case "get_file": {
           if (!args) return "Erro: get_file requer um caminho de ficheiro.";
-          const { error, content: content2, language, path } = await readWorkspaceFile(args);
-          if (error) return `Erro ao ler "${args}": ${error}`;
+          const { error, content: content2, language, path: filePath } = await readWorkspaceFile(args);
+          if (error) {
+            const result = `Erro ao ler "${args}": ${error}`;
+            await appendToActionLog(toolName, args, result);
+            return result;
+          }
+          await appendToActionLog(toolName, args, `lido com sucesso`);
           return `\`\`\`${language}
-// ${path}
+// ${filePath}
 ${content2}
 \`\`\``;
         }
@@ -15595,16 +15623,24 @@ ${content2}
             "Permitir",
             "Cancelar"
           );
-          if (confirmed !== "Permitir") return `Opera\xE7\xE3o cancelada pelo utilizador: ${filePath}`;
+          if (confirmed !== "Permitir") {
+            const result = `Opera\xE7\xE3o cancelada pelo utilizador: ${filePath}`;
+            await appendToActionLog(toolName, filePath, result);
+            return result;
+          }
           try {
             const encoder = new TextEncoder();
             await vscode2.workspace.fs.writeFile(uri, encoder.encode(content));
             const doc = await vscode2.workspace.openTextDocument(uri);
             await vscode2.window.showTextDocument(doc, { preview: true, preserveFocus: true });
             console.log(`[Tess Tools] Ficheiro ${action}: ${filePath}`);
-            return `Ficheiro ${action === "criar" ? "criado" : "editado"} com sucesso: ${filePath}`;
+            const result = `Ficheiro ${action === "criar" ? "criado" : "editado"} com sucesso: ${filePath}`;
+            await appendToActionLog(toolName, filePath, result);
+            return result;
           } catch (err) {
-            return `Erro ao ${action} ficheiro: ${err.message}`;
+            const result = `Erro ao ${action} ficheiro: ${err.message}`;
+            await appendToActionLog(toolName, filePath, result);
+            return result;
           }
         }
         case "list_dir": {
@@ -15618,10 +15654,14 @@ ${content2}
               const icon = type === vscode2.FileType.Directory ? "\u{1F4C1}" : "\u{1F4C4}";
               return `${icon} ${name}`;
             });
-            return `Conte\xFAdo de "${dirPath || "/"}":
+            const result = `Conte\xFAdo de "${dirPath || "/"}":
 ${lines.join("\n")}`;
+            await appendToActionLog(toolName, dirPath || "/", `listado (${lines.length} entradas)`);
+            return result;
           } catch (err) {
-            return `Erro ao listar directoria: ${err.message}`;
+            const result = `Erro ao listar directoria: ${err.message}`;
+            await appendToActionLog(toolName, dirPath || "/", result);
+            return result;
           }
         }
         default:
@@ -15910,6 +15950,9 @@ var require_provider = __commonJS({
           case "saveFile":
             await this._handleSaveFile(msg);
             break;
+          case "resync":
+            await this._handleResync();
+            break;
         }
       }
       // ─── Ready ───────────────────────────────────────────────────────────────
@@ -16035,6 +16078,22 @@ var require_provider = __commonJS({
         });
       }
       // ─── Guardar ficheiro ─────────────────────────────────────────────────────
+      // ─── Ressinc pelo log local ───────────────────────────────────────────────
+      async _handleResync() {
+        const folders = vscode2.workspace.workspaceFolders;
+        if (!folders) {
+          this._view.webview.postMessage({ type: "resyncData", log: null });
+          return;
+        }
+        const logUri = vscode2.Uri.joinPath(folders[0].uri, ".tess-log.md");
+        try {
+          const raw = await vscode2.workspace.fs.readFile(logUri);
+          const log = new TextDecoder().decode(raw);
+          this._view.webview.postMessage({ type: "resyncData", log });
+        } catch {
+          this._view.webview.postMessage({ type: "resyncData", log: null });
+        }
+      }
       async _handleSaveFile(msg) {
         const folders = vscode2.workspace.workspaceFolders;
         const base = folders?.[0]?.uri ?? vscode2.Uri.file(require("node:os").homedir());

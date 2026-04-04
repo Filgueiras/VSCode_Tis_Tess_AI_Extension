@@ -108,4 +108,4 @@ Clique com o botão direito em qualquer ficheiro ou selecção → **Tis: Chat c
 
 ## Versão
 
-2.5.0 · [TIS Angola](https://tis.ao)
+2.5.1 · [TIS Angola](https://tis.ao)

@@ -1,4 +1,4 @@
-# Architecture Decision Records (até versão 2.5.0)
+# Architecture Decision Records (até versão 2.5.1)
 
 Registo das decisões de arquitectura do projecto **Tis Tess**.
 
@@ -25,3 +25,5 @@ Um ADR documenta uma decisão técnica significativa: o contexto que a motivou, 
 | [ADR-015](ADR-015-retry-rate-limit.md) | Retry automático no erro 429 (Rate Limit) | Aceite |
 | [ADR-016](ADR-016-dependencias-e-pacote.md) | Gestão de dependências no empacotamento da extensão | Aceite |
 | [ADR-017](ADR-017-workflow-desenvolvimento-f5.md) | Workflow de desenvolvimento: build automático no F5 | Aceite |
+| [ADR-018](ADR-018-separacao-camada-http.md) | Separação da camada HTTP da camada de orquestração | Aceite |
+| [ADR-019](ADR-019-system-prompt-obrigatorio.md) | System prompt obrigatório em todas as chamadas à API Tess | Aceite |

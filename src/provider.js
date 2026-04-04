@@ -6,7 +6,7 @@ const { startStream, cancelStream } = require('./api');
 const { syncAgentConfig }           = require('./models');
 const { getCurrentCode, getWorkspaceTree, pickFiles, sendWorkspaceContext } = require('./workspace');
 const { buildHtml }                 = require('./webview');
-const { executeTool }               = require('./tools');
+const { executeTool, getToolsSystemPrompt } = require('./tools');
 const chatHistory                   = require('./chatHistory');
 
 function _currentWorkspacePath() {
@@ -135,6 +135,7 @@ class TessViewProvider {
         }
 
         messagesWithContext = [
+            { role: 'system', content: getToolsSystemPrompt() },
             ...messagesWithContext,
             { role: 'user', content: msg.userText }
         ];

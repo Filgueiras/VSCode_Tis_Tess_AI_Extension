@@ -15809,7 +15809,7 @@ var require_provider = __commonJS({
     var { syncAgentConfig } = require_models();
     var { getCurrentCode, getWorkspaceTree, pickFiles, sendWorkspaceContext } = require_workspace();
     var { buildHtml } = require_webview();
-    var { executeTool } = require_tools();
+    var { executeTool, getToolsSystemPrompt } = require_tools();
     var chatHistory2 = require_chatHistory();
     function _currentWorkspacePath() {
       return vscode2.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
@@ -15937,6 +15937,7 @@ var require_provider = __commonJS({
           }
         }
         messagesWithContext = [
+          { role: "system", content: getToolsSystemPrompt() },
           ...messagesWithContext,
           { role: "user", content: msg.userText }
         ];

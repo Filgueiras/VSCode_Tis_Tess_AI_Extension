@@ -356,7 +356,7 @@ A resposta é paginada e inclui para cada agente: `id`, `slug`, `title`, `type`,
 
 Se preferires usar esta funcionalidade directamente no VS Code sem escrever código:
 
-1. Instala a extensão **Tess Tis** (`tis-angola.tess-tis`)
+1. Instala a extensão **Tis Tess** (`tis-angola.tess-tis`)
 2. Em `Ctrl+,`, configura `tess.apiKey` e `tess.agentId`
 3. Clica no ícone Tess na barra lateral
 
@@ -366,4 +366,4 @@ Consulta o [README](readme.md) para mais detalhes sobre a extensão.
 
 ---
 
-*Documentação gerada para a versão 2.1.0 da extensão Tess Tis · TIS Angola*
+*Documentação gerada para a versão 2.5.1 da extensão Tis-Tess · TIS Angola*

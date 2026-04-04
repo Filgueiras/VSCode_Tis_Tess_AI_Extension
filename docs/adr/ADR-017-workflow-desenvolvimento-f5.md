@@ -1,7 +1,7 @@
 # ADR-017 — Workflow de desenvolvimento: build automático no F5
 
 **Estado:** Aceite
-**Data:** 2026-04-02 · Revisado: 2026-04-03
+**Data:** 2026-04-02 · Revisado: 2026-04-04
 
 ---
 
@@ -34,23 +34,43 @@ e depois corre o esbuild.
 }
 ```
 
-## Estrutura de tarefas (`.vscode/tasks.json`)
+## Estrutura de scripts (`package.json`)
 
-| Tarefa | Comando | Usado em |
+| Script | Comando | Usado em |
 |--------|---------|----------|
-| `copy-assets` | `npm run copy-assets` | interno ao build |
-| `build` | `npm run build` | preLaunchTask (F5) + antes de publicar |
+| `copy-assets` | copia `src/webview/` → `media/` | interno ao build |
+| `build` | `copy-assets` + esbuild | preLaunchTask (F5) |
+| `clean` | apaga `dist/` e `media/` | antes de `install-ext` |
+| `package` | `build` + `vsce package` | gera `.vsix` |
+| `install-ext` | `clean` + `package` + `code --install-extension --force` | instala na extensão activa |
 
-## Ciclo de desenvolvimento
+## Ciclo de desenvolvimento (iteração rápida — F5)
 
 ```
-editar src/ → F5 → build automático (copy-assets + esbuild < 200ms) → testar
+editar src/ → F5 → build automático (copy-assets + esbuild < 200ms) → testar no Extension Development Host
 ```
+
+O F5 corre no **Extension Development Host** — uma instância separada do VS Code. Não afecta
+a extensão instalada em `~/.vscode/extensions/`.
+
+## Testar a extensão instalada
+
+Para validar o comportamento da extensão **tal como o utilizador final a vê** (a partir do
+`.vsix` instalado), usar:
+
+```bash
+npm run install-ext   # clean + build + package + instala em ~/.vscode/extensions/
+```
+
+Este é o único caminho que actualiza a extensão instalada. Fazer apenas `npm run build` ou
+`npm run package` **não** actualiza a extensão em uso — o `.vsix` fica no disco mas não é
+instalado.
 
 ## Publicação (Marketplace)
 
 ```bash
 npm run package   # build + gera .vsix
+npx vsce publish  # publica na Marketplace
 ```
 
 O `"main"` não precisa de ser alterado manualmente em nenhum momento.

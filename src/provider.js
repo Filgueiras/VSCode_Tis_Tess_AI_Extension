@@ -4,7 +4,7 @@
 const vscode      = require('vscode');
 const { startStream, cancelStream } = require('./api');
 const { syncAgentConfig }           = require('./models');
-const { getCurrentCode, getWorkspaceTree, pickFiles, sendWorkspaceContext } = require('./workspace');
+const { getCurrentCode, getWorkspaceTree, pickWorkspaceFiles, sendWorkspaceContext } = require('./workspace');
 const { buildHtml }                 = require('./webview');
 const { executeTool, getToolsSystemPrompt } = require('./tools');
 const chatHistory                   = require('./chatHistory');
@@ -63,7 +63,7 @@ class TessViewProvider {
                 cancelStream();
                 this._view.webview.postMessage({ type: 'endResponse' }); // ✅ desbloqueia o UI
                 break;
-            case 'pickFile':            await pickFiles(this._view.webview);            break;
+            case 'pickFile':            await pickWorkspaceFiles(this._view.webview);  break;
             case 'getWorkspaceContext': await sendWorkspaceContext(this._view.webview); break;
             case 'newChat':             this._activeSessionId = null;                   break;
             case 'getHistory':          this._sendHistoryList();                        break;
@@ -224,7 +224,7 @@ class TessViewProvider {
 
     async _handleSaveFile(msg) {
         const folders = vscode.workspace.workspaceFolders;
-        const base    = folders?.[0]?.uri ?? vscode.Uri.file(require('os').homedir());
+        const base    = folders?.[0]?.uri ?? vscode.Uri.file(require('node:os').homedir());
         const uri     = await vscode.window.showSaveDialog({
             defaultUri: vscode.Uri.joinPath(base, msg.filename ?? 'snippet.txt'),
             filters:    { 'All files': ['*'] }

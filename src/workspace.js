@@ -72,7 +72,7 @@ async function readWorkspaceFile(relativePath) {
 
 /**
  * Abre o selector de ficheiros nativo e envia os conteúdos para o WebView.
- * @param {import('vscode').WebviewView} view
+ * @param {import('vscode').Webview} view
  */
 async function pickWorkspaceFiles(view) {
     const folders = vscode.workspace.workspaceFolders;
@@ -98,12 +98,12 @@ async function pickWorkspaceFiles(view) {
         };
     }));
 
-    view.webview.postMessage({ type: 'insertFiles', files });
+    view.postMessage({ type: 'insertFiles', files });
 }
 
 /**
  * Gera a árvore do workspace e envia para o WebView como contexto injectado.
- * @param {import('vscode').WebviewView} view
+ * @param {import('vscode').Webview} view
  */
 async function sendWorkspaceContext(view) {
     const folders = vscode.workspace.workspaceFolders;
@@ -120,7 +120,7 @@ async function sendWorkspaceContext(view) {
         return;
     }
 
-    view.webview.postMessage({
+    view.postMessage({
         type: 'insertContext',
         context: tree,
         label: `📁 ${path.basename(folders[0].uri.fsPath)}`

@@ -56,6 +56,22 @@ async function postWithRetry(url, body, headers, signal) {
     }
 }
 
+// ─── Mensagens de erro amigáveis ──────────────────────────────────────────────
+
+function friendlyError(status, fallback) {
+    switch (status) {
+        case 401: return 'API Key inválida ou expirada. Verifique em Definições → tess.apiKey.';
+        case 403: return 'Sem permissão para aceder a este agente. Verifique se o Agent ID está correcto.';
+        case 404: return 'Agente não encontrado. Verifique se o Agent ID existe e está acessível.';
+        case 500: return 'Erro interno do servidor Tess. Tente novamente em alguns segundos.';
+        case 502: return 'Servidor Tess inacessível (bad gateway). Verifique tess.im/status.';
+        case 503: return 'Serviço Tess temporariamente indisponível. Verifique tess.im/status.';
+        case 504: return 'O servidor Tess não respondeu a tempo (504). Tente com menos contexto ou aguarde.';
+        case 524: return 'Timeout do Cloudflare (524) — o servidor demorou demasiado. Tente com menos contexto ou aguarde.';
+        default:  return fallback ? `Erro ${status}: ${fallback}` : `Erro de ligação (${status}).`;
+    }
+}
+
 // ─── Stream principal ─────────────────────────────────────────────────────────
 
 /**
@@ -179,11 +195,15 @@ async function startStream({ apiKey, agentId, model, messages, onChunk, onUsage,
             return; // cancelamento normal — provider envia 'cancelled' se necessário
         }
 
-        let msg = err.message;
-        if (err.response?.data) {
-            msg = await readErrorBody(err.response.data) ?? msg;
+        const status = err.response?.status;
+        if (status) {
+            const apiMsg = err.response.data
+                ? await readErrorBody(err.response.data) ?? null
+                : null;
+            onError(friendlyError(status, apiMsg));
+        } else {
+            onError(`Sem ligação ou serviço inacessível: ${err.message}`);
         }
-        onError(`Erro: ${msg}`);
     } finally {
         _abortController = null;
     }

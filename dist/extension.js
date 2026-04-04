@@ -15143,6 +15143,28 @@ var require_api = __commonJS({
         throw err;
       }
     }
+    function friendlyError(status, fallback) {
+      switch (status) {
+        case 401:
+          return "API Key inv\xE1lida ou expirada. Verifique em Defini\xE7\xF5es \u2192 tess.apiKey.";
+        case 403:
+          return "Sem permiss\xE3o para aceder a este agente. Verifique se o Agent ID est\xE1 correcto.";
+        case 404:
+          return "Agente n\xE3o encontrado. Verifique se o Agent ID existe e est\xE1 acess\xEDvel.";
+        case 500:
+          return "Erro interno do servidor Tess. Tente novamente em alguns segundos.";
+        case 502:
+          return "Servidor Tess inacess\xEDvel (bad gateway). Verifique tess.im/status.";
+        case 503:
+          return "Servi\xE7o Tess temporariamente indispon\xEDvel. Verifique tess.im/status.";
+        case 504:
+          return "O servidor Tess n\xE3o respondeu a tempo (504). Tente com menos contexto ou aguarde.";
+        case 524:
+          return "Timeout do Cloudflare (524) \u2014 o servidor demorou demasiado. Tente com menos contexto ou aguarde.";
+        default:
+          return fallback ? `Erro ${status}: ${fallback}` : `Erro de liga\xE7\xE3o (${status}).`;
+      }
+    }
     async function startStream({ apiKey, agentId, model, messages, onChunk, onUsage, onEnd, onError }) {
       cancelStream();
       _abortController = new AbortController();
@@ -15240,11 +15262,13 @@ var require_api = __commonJS({
         if (axios.isCancel(err) || err.name === "CanceledError" || err.name === "AbortError") {
           return;
         }
-        let msg = err.message;
-        if (err.response?.data) {
-          msg = await readErrorBody(err.response.data) ?? msg;
+        const status = err.response?.status;
+        if (status) {
+          const apiMsg = err.response.data ? await readErrorBody(err.response.data) ?? null : null;
+          onError(friendlyError(status, apiMsg));
+        } else {
+          onError(`Sem liga\xE7\xE3o ou servi\xE7o inacess\xEDvel: ${err.message}`);
         }
-        onError(`Erro: ${msg}`);
       } finally {
         _abortController = null;
       }
@@ -15381,7 +15405,7 @@ ${lines.join("\n")}`;
           code: content.length > MAX_FILE_CHARS ? content.slice(0, MAX_FILE_CHARS) + "\n// ... ficheiro truncado" : content
         };
       }));
-      view.webview.postMessage({ type: "insertFiles", files });
+      view.postMessage({ type: "insertFiles", files });
     }
     async function sendWorkspaceContext(view) {
       const folders = vscode2.workspace.workspaceFolders;
@@ -15394,7 +15418,7 @@ ${lines.join("\n")}`;
         vscode2.window.showWarningMessage("N\xE3o foi poss\xEDvel gerar a \xE1rvore do projecto.");
         return;
       }
-      view.webview.postMessage({
+      view.postMessage({
         type: "insertContext",
         context: tree,
         label: `\u{1F4C1} ${path.basename(folders[0].uri.fsPath)}`
@@ -15807,7 +15831,7 @@ var require_provider = __commonJS({
     var vscode2 = require("vscode");
     var { startStream, cancelStream } = require_api();
     var { syncAgentConfig } = require_models();
-    var { getCurrentCode, getWorkspaceTree, pickFiles, sendWorkspaceContext } = require_workspace();
+    var { getCurrentCode, getWorkspaceTree, pickWorkspaceFiles, sendWorkspaceContext } = require_workspace();
     var { buildHtml } = require_webview();
     var { executeTool, getToolsSystemPrompt } = require_tools();
     var chatHistory2 = require_chatHistory();
@@ -15860,7 +15884,7 @@ var require_provider = __commonJS({
             this._view.webview.postMessage({ type: "endResponse" });
             break;
           case "pickFile":
-            await pickFiles(this._view.webview);
+            await pickWorkspaceFiles(this._view.webview);
             break;
           case "getWorkspaceContext":
             await sendWorkspaceContext(this._view.webview);
@@ -16013,7 +16037,7 @@ var require_provider = __commonJS({
       // ─── Guardar ficheiro ─────────────────────────────────────────────────────
       async _handleSaveFile(msg) {
         const folders = vscode2.workspace.workspaceFolders;
-        const base = folders?.[0]?.uri ?? vscode2.Uri.file(require("os").homedir());
+        const base = folders?.[0]?.uri ?? vscode2.Uri.file(require("node:os").homedir());
         const uri = await vscode2.window.showSaveDialog({
           defaultUri: vscode2.Uri.joinPath(base, msg.filename ?? "snippet.txt"),
           filters: { "All files": ["*"] }

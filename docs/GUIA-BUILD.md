@@ -11,11 +11,22 @@ Ambas são executadas automaticamente por `npm run build`.
 
 ---
 
-## Processo completo
+## Scripts disponíveis
+
+| Script        | Comando               | Descrição                                                  |
+|---------------|-----------------------|------------------------------------------------------------|
+| `copy-assets` | `npm run copy-assets` | Copia activos do WebView de `src/webview/` para `media/`   |
+| `build`       | `npm run build`       | `copy-assets` + bundle esbuild → `dist/extension.js`       |
+| `clean`       | `npm run clean`       | Apaga `dist/` e `media/` (garante estado limpo)            |
+| `package`     | `npm run package`     | `build` + gera `.vsix`                                     |
+| `install-ext` | `npm run install-ext` | `clean` + `package` + instala no VS Code local (`--force`) |
+
+---
+
+## Processo completo — publicação
 
 ```bash
-# 1. Actualizar a versão (MAJOR.MINOR.PATCH — ver tabela abaixo)
-# Isso já vai alterar a versão no package.json (não precisa alterar manualmente)
+# 1. Actualizar a versão (altera package.json automaticamente)
 npm version 2.X.Y --no-git-tag-version
 
 # 2. Gerar o .vsix (faz build + empacota)
@@ -26,17 +37,29 @@ O ficheiro gerado segue o padrão `tis-tess-{version}.vsix`.
 
 ---
 
-## Scripts disponíveis
-______________________________________________________________________________________
-| Script        | Comando               | Descrição                                  |
-|---------------|-----------------------|--------------------------------------------|
-| `build`       | `npm run build`       | Copia activos para `media/`                |
-|               !                       |+ bundle esbuild → `dist/extension.js`      |
-|------------------------------------------------------------------------------------|
-| `package`     | `npm run package`     | Build completo + gera `.vsix`              |
-|------------------------------------------------------------------------------------|
-| `install-ext` | `npm run install-ext` | Build + package + instala no VS Code local |
-|------------------------------------------------------------------------------------|
+## Ciclos de desenvolvimento
+
+### Iteração normal — F5
+
+```
+editar src/ → F5 → build automático (< 200ms) → testar no Extension Development Host
+```
+
+O `preLaunchTask: "build"` no `launch.json` garante que o bundle está sempre actualizado antes
+de lançar. É o fluxo para o dia-a-dia.
+
+### Validar como extensão instalada — `install-ext`
+
+```bash
+npm run install-ext
+```
+
+Faz `clean` + `build` + `package` + instala em `~/.vscode/extensions/` com `--force`.
+
+Usar quando:
+- O bug só ocorre na extensão instalada (não no Development Host)
+- Queres validar o `.vsix` antes de publicar
+- Queres testar no VS Code normal sem uma segunda janela
 
 ---
 
@@ -47,8 +70,8 @@ tis-tess/
 ├── extension.js              # Entry point (source)
 ├── src/
 │   ├── webview/
-│   │   ├── webview.css       # Source dos estilos do painel (não vai directamente no .vsix)
-│   │   └── webview-script.js # Source do script do chat (não vai directamente no .vsix)
+│   │   ├── webview.css       # Source dos estilos do painel
+│   │   └── webview-script.js # Source do script do chat
 │   └── ...                   # Restantes módulos Node.js
 ├── media/
 │   └── webview/
@@ -86,18 +109,6 @@ marco_temp-dev_notes.md  # notas pessoais de desenvolvimento
 
 ---
 
-## Instalação recomendada (via UI do VS Code)
-
-Este é o método correcto — evita estados "pendentes" que causam o ícone de reload persistente:
-
-1. **`Ctrl+Shift+P` → Extensions: Install from VSIX** — selecciona o ficheiro `.vsix` gerado
-2. **`Ctrl+Shift+P` → Developer: Reload Window**
-
-> **Importante:** Evite usar `code --install-extension` no terminal enquanto o VS Code está aberto.
-> O comando deixa a extensão num estado "pendente de reload" que persiste mesmo após recarregar.
-
----
-
 ## Limpar versões antigas (quando necessário)
 
 O VS Code não substitui versões antigas automaticamente ao instalar via VSIX — adiciona uma nova pasta lado a lado. Se houver versões em conflito, remova manualmente **com o VS Code fechado**:
@@ -112,9 +123,23 @@ Remove-Item "$env:USERPROFILE\.vscode\extensions\tis-angola.tis-tess-*" -Recurse
 rm -rf ~/.vscode/extensions/tis-angola.tis-tess-*
 ```
 
-Depois reabra o VS Code e instale a versão pretendida via UI.
+Depois reabra o VS Code e instale a versão pretendida via UI (`Ctrl+Shift+P` → Extensions: Install from VSIX).
 
 ---
+
+## Desinstalar a extensão manualmente
+
+O `code --uninstall-extension` nem sempre remove a extensão por completo — pode persistir
+após `Reload Window` mesmo sem erros reportados. Para garantir uma desinstalação limpa:
+
+### Passo a passo
+
+1. **Fechar o VS Code completamente** (não basta fechar a janela — verificar que não há processo em background)
+
+2. **Remover a pasta da extensão:**
+
+   **Windows (PowerShell):**
+   
 
 ## Semantic Versioning — MAJOR.MINOR.PATCH
 
@@ -151,15 +176,20 @@ O campo `"main"` deve ser `"./dist/extension.js"` (o bundle). Se apontar para `"
 **Causa 2 — `dist/extension.js` ausente ou desactualizado.**
 
 ```bash
-npm run build
-npm run package
+npm run install-ext
 ```
 
 ### `.vsix` gerado com tamanho suspeito (< 50 KB)
 
 **Causa:** `npm run package` não foi usado — `npx vsce package` directo não corre o build.
 
-**Solução:** Usar sempre `npm run package`.
+**Solução:** Usar sempre `npm run package` ou `npm run install-ext`.
+
+### Alterações no source não reflectidas na extensão instalada
+
+**Causa:** Foi feito apenas `npm run build` ou `npm run package` sem instalar.
+
+**Solução:** `npm run install-ext` — é o único comando que actualiza a extensão instalada.
 
 ---
 

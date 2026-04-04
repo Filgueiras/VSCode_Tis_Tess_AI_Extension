@@ -3,6 +3,33 @@
 const vscode = require('vscode');
 const { readWorkspaceFile, getWorkspaceTree } = require('./workspace');
 
+// ─── Log local de acções ───────────────────────────────────────────────────────
+
+async function appendToActionLog(toolName, args, result) {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return;
+
+    const now       = new Date();
+    const timestamp = now.toISOString().replace('T', ' ').slice(0, 19);
+    const status    = (typeof result === 'string' && result.startsWith('Erro')) ? '❌' : '✅';
+    const argStr    = args ? `: ${args}` : '';
+    const line      = `${status} [${timestamp}] ${toolName}${argStr} → ${result.split('\n')[0]}\n`;
+
+    const logUri = vscode.Uri.joinPath(folders[0].uri, '.tess-log.md');
+
+    let existing = '';
+    try {
+        const raw = await vscode.workspace.fs.readFile(logUri);
+        existing  = new TextDecoder().decode(raw);
+    } catch { /* ficheiro ainda não existe */ }
+
+    if (!existing) {
+        existing = '# Tess — Log de Acções\n\n';
+    }
+
+    await vscode.workspace.fs.writeFile(logUri, new TextEncoder().encode(existing + line));
+}
+
 // ─── Protocolo de ferramentas ──────────────────────────────────────────────────
 // Formato: [TOOL:nome_ferramenta:argumento_opcional]
 // Exemplos:
@@ -57,15 +84,21 @@ async function executeTool(toolName, args, content = null) {
 
         case 'get_tree': {
             const tree = await getWorkspaceTree();
-            if (!tree) return 'Erro: sem workspace aberto ou pasta vazia.';
-            return tree;
+            const result = tree ?? 'Erro: sem workspace aberto ou pasta vazia.';
+            await appendToActionLog(toolName, args, result.slice(0, 80));
+            return result;
         }
 
         case 'get_file': {
             if (!args) return 'Erro: get_file requer um caminho de ficheiro.';
-            const { error, content, language, path } = await readWorkspaceFile(args);
-            if (error) return `Erro ao ler "${args}": ${error}`;
-            return `\`\`\`${language}\n// ${path}\n${content}\n\`\`\``;
+            const { error, content, language, path: filePath } = await readWorkspaceFile(args);
+            if (error) {
+                const result = `Erro ao ler "${args}": ${error}`;
+                await appendToActionLog(toolName, args, result);
+                return result;
+            }
+            await appendToActionLog(toolName, args, `lido com sucesso`);
+            return `\`\`\`${language}\n// ${filePath}\n${content}\n\`\`\``;
         }
 
         case 'write_file':
@@ -91,7 +124,11 @@ async function executeTool(toolName, args, content = null) {
                 'Cancelar'
             );
 
-            if (confirmed !== 'Permitir') return `Operação cancelada pelo utilizador: ${filePath}`;
+            if (confirmed !== 'Permitir') {
+                const result = `Operação cancelada pelo utilizador: ${filePath}`;
+                await appendToActionLog(toolName, filePath, result);
+                return result;
+            }
 
             try {
                 const encoder = new TextEncoder();
@@ -102,9 +139,13 @@ async function executeTool(toolName, args, content = null) {
                 await vscode.window.showTextDocument(doc, { preview: true, preserveFocus: true });
 
                 console.log(`[Tess Tools] Ficheiro ${action}: ${filePath}`);
-                return `Ficheiro ${action === 'criar' ? 'criado' : 'editado'} com sucesso: ${filePath}`;
+                const result = `Ficheiro ${action === 'criar' ? 'criado' : 'editado'} com sucesso: ${filePath}`;
+                await appendToActionLog(toolName, filePath, result);
+                return result;
             } catch (err) {
-                return `Erro ao ${action} ficheiro: ${err.message}`;
+                const result = `Erro ao ${action} ficheiro: ${err.message}`;
+                await appendToActionLog(toolName, filePath, result);
+                return result;
             }
         }
 
@@ -121,9 +162,13 @@ async function executeTool(toolName, args, content = null) {
                     return `${icon} ${name}`;
                 });
 
-                return `Conteúdo de "${dirPath || '/'}":\n${lines.join('\n')}`;
+                const result = `Conteúdo de "${dirPath || '/'}":\n${lines.join('\n')}`;
+                await appendToActionLog(toolName, dirPath || '/', `listado (${lines.length} entradas)`);
+                return result;
             } catch (err) {
-                return `Erro ao listar directoria: ${err.message}`;
+                const result = `Erro ao listar directoria: ${err.message}`;
+                await appendToActionLog(toolName, dirPath || '/', result);
+                return result;
             }
         }
 

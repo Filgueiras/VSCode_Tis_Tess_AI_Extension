@@ -17,6 +17,9 @@ Mantém o contexto do projecto, historial de conversas por workspace e suporte a
 - **Medidor de contexto** — mostra os tokens consumidos em tempo real
 - **Múltiplos modelos** — selecção do modelo directamente no painel
 - **Tool calling** — o agente pode ler e escrever ficheiros do projecto com confirmação antes de executar
+- **Feedback visual de operações** — cada acção do agente (ler, criar, editar ficheiro) aparece no chat em tempo real
+- **Log local de acções** — todas as operações são registadas em `.tess-log.md` na raiz do workspace
+- **Ressincronização de sessão** — botão e deteção automática de perda de sincronia entre o agente e o estado local
 
 ---
 
@@ -77,6 +80,24 @@ Clique em **📎 Adicionar ficheiros** para incluir o conteúdo de ficheiros que
 
 Clique em **🗂️ Contexto do projecto** para injectar manualmente a árvore de ficheiros do workspace.
 
+### Operações de ficheiros (tool calling)
+
+O agente pode ler, criar e editar ficheiros do projecto. Para cada operação:
+
+1. O agente pede confirmação via diálogo modal ("Tess quer editar: src/api.js")
+2. O chat mostra o tipo de operação e o caminho do ficheiro em tempo real
+3. O ficheiro alterado abre automaticamente no editor após a operação
+
+Todas as operações são registadas em `.tess-log.md` na raiz do workspace.
+
+### Ressincronização
+
+Se a ligação cair durante uma sequência de operações, o agente pode perder contexto. Nesse caso:
+
+- O chat mostra automaticamente um aviso ⚠️ com link **Ressincronizar agora?**
+- Em alternativa, clique em **🔄 Log Ressinc** para injectar o log de acções no chat
+- O agente analisa o log e retoma o trabalho a partir do ponto de interrupção
+
 ### Histórico
 
 Clique em **Histórico** para abrir o drawer de conversas do workspace actual.
@@ -95,6 +116,8 @@ Clique com o botão direito em qualquer ficheiro ou selecção → **Tis: Chat c
 | Painel bloqueado com aviso de configuração | `tess.apiKey` ou `tess.agentId` não preenchidos | `Ctrl+,` → pesquise `tess` |
 | Selector de modelo mostra "Padrão do agente" (desactivado) | Agente com modelo fixo | Normal — o agente usa um modelo fixo, não expõe escolha |
 | Resposta parou a meio | Timeout ou erro de rede | Clique **Parar** e tente novamente |
+| Agente perdeu contexto das operações | Perda de sincronia durante tool calls | Clique **🔄 Log Ressinc** ou use o link ⚠️ no chat |
+| `.tess-log.md` não é criado | Sem workspace aberto | Abra uma pasta no VS Code antes de usar ferramentas |
 | Painel não aparece na barra lateral | Vista oculta | `View → Open View… → Tess Chat` |
 
 ---
@@ -108,4 +131,4 @@ Clique com o botão direito em qualquer ficheiro ou selecção → **Tis: Chat c
 
 ## Versão
 
-2.5.1 · [TIS Angola](https://tis.ao)
+3.1.0 · [TIS Angola](https://tis.ao)

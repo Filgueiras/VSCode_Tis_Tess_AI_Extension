@@ -72,6 +72,7 @@ class TessViewProvider {
             case 'deleteSession':       this._deleteSession(msg.id);                    break;
             case 'toolCall':            await this._handleToolCall(msg);                break;
             case 'saveFile':            await this._handleSaveFile(msg);                break;
+            case 'resync':              await this._handleResync();                      break;
         }
     }
 
@@ -221,6 +222,24 @@ class TessViewProvider {
     }
 
     // ─── Guardar ficheiro ─────────────────────────────────────────────────────
+
+    // ─── Ressinc pelo log local ───────────────────────────────────────────────
+
+    async _handleResync() {
+        const folders = vscode.workspace.workspaceFolders;
+        if (!folders) {
+            this._view.webview.postMessage({ type: 'resyncData', log: null });
+            return;
+        }
+        const logUri = vscode.Uri.joinPath(folders[0].uri, '.tess-log.md');
+        try {
+            const raw = await vscode.workspace.fs.readFile(logUri);
+            const log = new TextDecoder().decode(raw);
+            this._view.webview.postMessage({ type: 'resyncData', log });
+        } catch {
+            this._view.webview.postMessage({ type: 'resyncData', log: null });
+        }
+    }
 
     async _handleSaveFile(msg) {
         const folders = vscode.workspace.workspaceFolders;

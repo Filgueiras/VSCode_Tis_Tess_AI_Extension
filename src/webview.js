@@ -76,6 +76,7 @@ function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
     <div id="actionButtons">
       <button class="btn-ghost" id="codeBtn">📎 Adicionar ficheiros</button>
       <button class="btn-ghost" id="contextBtn">🗂️ Contexto do projecto</button>
+      <button class="btn-ghost" id="resyncBtn" title="Injeta o log de acções no chat para ressincronizar o agente">🔄 Log Ressinc</button>
     </div>
     <div id="inputRow">
       <textarea

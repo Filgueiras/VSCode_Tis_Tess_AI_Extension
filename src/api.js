@@ -1,15 +1,21 @@
 // src/api.js
 'use strict';
 
-const vscode  = require('vscode');
-const axios   = require('axios');
-const { getWorkspaceTree, getCurrentCode } = require('./workspace');
-const { getToolsSystemPrompt }             = require('./tools');
+const axios = require('axios');
 
-const BASE_URL          = 'https://api.tess.im';
-const REQUEST_TIMEOUT   = 300000; // 5 min — timeout total da ligação axios
-const FIRST_BYTE_LIMIT  = 30000;  // 30s — tempo máximo até ao primeiro chunk
-const INACTIVITY_LIMIT  = 60000;  // 60s — tempo máximo sem novos dados após o stream ter começado
+const BASE_URL         = 'https://api.tess.im';
+const REQUEST_TIMEOUT  = 300_000; // 5 min
+const FIRST_BYTE_LIMIT =  30_000; // 30s até ao primeiro chunk
+const INACTIVITY_LIMIT =  60_000; // 60s sem dados após stream iniciado
+
+let _abortController = null;
+
+// ─── Cancel ──────────────────────────────────────────────────────────────────
+
+function cancelStream() {
+    _abortController?.abort();
+    _abortController = null;
+}
 
 // ─── Leitura do corpo de erro ─────────────────────────────────────────────────
 
@@ -33,80 +39,49 @@ async function readErrorBody(data) {
     }
 }
 
-// ─── Envio com retry no 429 ───────────────────────────────────────────────────
+// ─── Retry no 429 ────────────────────────────────────────────────────────────
 
 async function postWithRetry(url, body, headers, signal) {
+    const cfg = { headers, responseType: 'stream', timeout: REQUEST_TIMEOUT, signal };
     try {
-        return await axios.post(url, body, {
-            headers,
-            responseType: 'stream',
-            timeout: REQUEST_TIMEOUT,
-            signal
-        });
-    } catch (error) {
-        if (error.response?.status === 429) {
-            const retryAfter = Number.parseInt(
-                error.response.headers['retry-after'] ?? '5', 10
-            );
-            console.warn(`[Tess:api] Rate limit atingido. Aguardando ${retryAfter}s...`);
-            await new Promise(res => setTimeout(res, retryAfter * 1000));
-            return await axios.post(url, body, {
-                headers,
-                responseType: 'stream',
-                timeout: REQUEST_TIMEOUT,
-                signal
-            });
+        return await axios.post(url, body, cfg);
+    } catch (err) {
+        if (err.response?.status === 429) {
+            const wait = parseInt(err.response.headers['retry-after'] ?? '5', 10);
+            console.warn(`[Tess:api] Rate limit. Aguardando ${wait}s...`);
+            await new Promise(r => setTimeout(r, wait * 1000));
+            return await axios.post(url, body, cfg);
         }
-        throw error;
+        throw err;
     }
 }
 
-// ─── Handler principal ────────────────────────────────────────────────────────
+// ─── Stream principal ─────────────────────────────────────────────────────────
 
 /**
- * Envia uma mensagem para a API Tess e faz stream da resposta para o WebView.
- * @returns {Promise<string|null>} Texto completo da resposta, ou null em erro/cancelamento
+ * @param {{
+ *   apiKey:   string,
+ *   agentId:  string,
+ *   model:    string,
+ *   messages: {role: string, content: string}[],
+ *   onChunk:  (text: string) => void,
+ *   onUsage:  (usage: object) => void,
+ *   onEnd:    () => void,
+ *   onError:  (msg: string) => void
+ * }} opts
  */
-async function handleSend(view, userText, model, history, signal, lastEditor, isToolContinuation = false) {
-    const config  = vscode.workspace.getConfiguration('tess');
-    const apiKey  = config.get('apiKey');
-    const agentId = config.get('agentId');
+async function startStream({ apiKey, agentId, model, messages, onChunk, onUsage, onEnd, onError }) {
+    // Garante que não há stream anterior activo
+    cancelStream();
+    _abortController = new AbortController();
+    const signal = _abortController.signal;
 
-    if (!apiKey) {
-        view.webview.postMessage({ type: 'error', text: 'API Key não configurada. Vá a Definições → tess.apiKey' });
-        return null;
-    }
-    if (!agentId) {
-        view.webview.postMessage({ type: 'error', text: 'Agent ID não configurado. Vá a Definições → tess.agentId' });
-        return null;
-    }
+    const body = { messages, stream: true };
+    if (model && model !== 'auto') body.model = model;
+
+    console.log(`[Tess] → POST ${BASE_URL}/agents/${agentId}/openai/chat/completions (model: ${model})`);
 
     try {
-        let fullUserText = userText;
-
-        if (!isToolContinuation && userText) {
-            const codeInfo = getCurrentCode(lastEditor);
-            if (codeInfo) {
-                fullUserText = `${userText}\n\n\`\`\`${codeInfo.language}\n${codeInfo.code}\n\`\`\``;
-            }
-            if (history.length === 0) {
-                const tree = await getWorkspaceTree();
-                if (tree) fullUserText = `${tree}\n\n---\n\n${fullUserText}`;
-            }
-        }
-
-        const messages = [
-            { role: 'system', content: getToolsSystemPrompt() },
-            ...history.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: fullUserText || userText }
-        ];
-
-        const body = { messages, stream: true };
-        if (model !== 'auto') body.model = model;
-
-        console.log(`[Tess] → POST ${BASE_URL}/agents/${agentId}/openai/chat/completions (model: ${model})`);
-        view.webview.postMessage({ type: 'startResponse' });
-
         const response = await postWithRetry(
             `${BASE_URL}/agents/${agentId}/openai/chat/completions`,
             body,
@@ -117,49 +92,42 @@ async function handleSend(view, userText, model, history, signal, lastEditor, is
             signal
         );
 
-        return await new Promise((resolve) => {
+        await new Promise((resolve) => {
             let buffer        = '';
-            let fullText      = '';
             let receivedChunk = false;
             let doneSent      = false;
 
-            // ── Watchdog: 30s até ao primeiro chunk ─────────────────────────
+            // ── Watchdog: primeiro chunk ──────────────────────────────────
             const firstByteTimer = setTimeout(() => {
                 if (!receivedChunk) {
                     console.warn('[Tess] Timeout: sem resposta em 30s');
                     response.data.destroy();
-                    view.webview.postMessage({
-                        type: 'error',
-                        text: 'O modelo demorou demasiado a responder. Tente novamente.'
-                    });
-                    resolve(null);
+                    onError('O modelo demorou demasiado a responder. Tente novamente.');
+                    resolve();
                 }
             }, FIRST_BYTE_LIMIT);
 
-            // ── Watchdog: 60s sem novos dados após o stream ter começado ────
+            // ── Watchdog: inactividade após stream iniciado ───────────────
             let inactivityTimer = null;
             function resetInactivity() {
                 clearTimeout(inactivityTimer);
                 inactivityTimer = setTimeout(() => {
                     if (!doneSent) {
-                        console.warn('[Tess] Timeout de inactividade: stream parou sem fechar');
+                        console.warn('[Tess] Timeout de inactividade');
                         response.data.destroy();
-                        view.webview.postMessage({
-                            type: 'error',
-                            text: 'A resposta parou a meio sem terminar. Tente novamente.'
-                        });
-                        resolve(null);
+                        onError('A resposta parou a meio sem terminar. Tente novamente.');
+                        resolve();
                     }
                 }, INACTIVITY_LIMIT);
             }
 
-            function finish(text) {
+            function finish() {
                 if (doneSent) return;
                 doneSent = true;
                 clearTimeout(firstByteTimer);
                 clearTimeout(inactivityTimer);
-                view.webview.postMessage({ type: 'endResponse' });
-                resolve(text || null);
+                onEnd();
+                resolve();
             }
 
             response.data.on('data', (chunk) => {
@@ -167,79 +135,58 @@ async function handleSend(view, userText, model, history, signal, lastEditor, is
                 resetInactivity();
                 buffer += chunk.toString();
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); // guarda linha incompleta
+                buffer = lines.pop(); // retém linha incompleta
 
                 for (const line of lines) {
                     if (!line.startsWith('data: ')) continue;
                     const raw = line.slice(6).trim();
-                    if (raw === '[DONE]') {
-                        finish(fullText);
-                        return;
-                    }
+                    if (raw === '[DONE]') { finish(); return; }
                     try {
                         const parsed = JSON.parse(raw);
                         const text   = parsed.choices?.[0]?.delta?.content;
-                        if (text) {
-                            fullText += text;
-                            view.webview.postMessage({ type: 'chunk', text });
-                        }
-                        if (parsed.usage) {
-                            view.webview.postMessage({ type: 'usage', usage: parsed.usage });
-                        }
-                    } catch { /* chunk incompleto — ignorar */ }
+                        if (text) onChunk(text);
+                        if (parsed.usage) onUsage(parsed.usage);
+                    } catch { /* chunk incompleto */ }
                 }
             });
 
             response.data.on('end', () => {
-                // Processa o que ficou no buffer (stream sem \n final)
                 if (buffer.startsWith('data: ')) {
                     const raw = buffer.slice(6).trim();
                     if (raw && raw !== '[DONE]') {
                         try {
-                            const parsed = JSON.parse(raw);
-                            const text   = parsed.choices?.[0]?.delta?.content;
-                            if (text) {
-                                fullText += text;
-                                view.webview.postMessage({ type: 'chunk', text });
-                            }
+                            const text = JSON.parse(raw).choices?.[0]?.delta?.content;
+                            if (text) onChunk(text);
                         } catch { /* ignorar */ }
                     }
                 }
-                finish(fullText);
+                finish();
             });
 
             response.data.on('error', (err) => {
                 clearTimeout(firstByteTimer);
                 clearTimeout(inactivityTimer);
                 console.error('[Tess] Erro de stream:', err.message);
-                view.webview.postMessage({
-                    type: 'error',
-                    text: `Erro de ligação: ${err.message}`
-                });
-                resolve(null);
+                onError(`Erro de ligação: ${err.message}`);
+                resolve();
             });
         });
 
-    } catch (error) {
-        console.error('[Tess] Erro na chamada:', error.message, '| code:', error.code, '| status:', error.response?.status);
+    } catch (err) {
+        console.error('[Tess] Erro na chamada:', err.message, '| status:', err.response?.status);
 
-        if (axios.isCancel(error) || error.name === 'CanceledError' || error.name === 'AbortError') {
-            view.webview.postMessage({ type: 'cancelled' });
-            return null;
+        if (axios.isCancel(err) || err.name === 'CanceledError' || err.name === 'AbortError') {
+            return; // cancelamento normal — provider envia 'cancelled' se necessário
         }
 
-        let msg = error.message;
-        if (error.response?.data) {
-            try {
-                msg = await readErrorBody(error.response.data) ?? msg;
-            } catch (e) {
-                console.error('[Tess] Falha ao ler erro:', e.message);
-            }
+        let msg = err.message;
+        if (err.response?.data) {
+            msg = await readErrorBody(err.response.data) ?? msg;
         }
-
-        view.webview.postMessage({ type: 'error', text: `Erro: ${msg}` });
-        return null;
+        onError(`Erro: ${msg}`);
+    } finally {
+        _abortController = null;
     }
 }
 
-module.exports = { handleSend };
+module.exports = { startStream, cancelStream };

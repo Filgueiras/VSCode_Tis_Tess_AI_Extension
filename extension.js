@@ -2,7 +2,8 @@
 'use strict';
 
 const vscode = require('vscode');
-const { TessChatViewProvider } = require('./src/provider');
+const { TessViewProvider } = require('./src/provider');
+
 const chatHistory              = require('./src/chatHistory');
 
 function activate(context) {
@@ -12,7 +13,7 @@ function activate(context) {
     chatHistory.init(context);
 
     // 2. Provider do chat (único ponto de entrada visual)
-    const provider = new TessChatViewProvider(context);
+    const provider = new TessViewProvider(context);
 
     context.subscriptions.push(
 

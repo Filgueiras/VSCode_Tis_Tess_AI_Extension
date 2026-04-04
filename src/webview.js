@@ -1,6 +1,33 @@
+// src/webview.js
 'use strict';
 
-function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits, cspSource, nonce) {
+const vscode = require('vscode');
+const crypto = require('crypto');
+
+function getNonce() {
+    return crypto.randomBytes(16).toString('hex');
+}
+
+/**
+ * @param {vscode.Webview} webview
+ * @param {vscode.Uri} extensionUri
+ * @param {{ id: string, label: string }[]} models
+ * @param {Record<string, number>} modelLimits
+ */
+function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
+    const nonce     = getNonce();
+    const cspSource = webview.cspSource;
+
+    const logoUri   = webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, 'tis_nobg.png')
+    );
+    const cssUri    = webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, 'media', 'webview', 'webview.css')
+    );
+    const scriptUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, 'media', 'webview', 'webview-script.js')
+    );
+
     const modelOptions = models
         .map(m => `<option value="${m.id}">${m.label}</option>`)
         .join('');

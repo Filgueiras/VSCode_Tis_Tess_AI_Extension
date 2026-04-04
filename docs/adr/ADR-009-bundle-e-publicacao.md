@@ -1,6 +1,6 @@
 # ADR-009 — Bundle com esbuild para publicação na Marketplace
 
-**Estado:** Proposto
+**Estado:** Aceite — ver também ADR-016 (dependências transitivas) e ADR-017 (workflow F5)
 **Data:** 2026-03-31
 
 ---

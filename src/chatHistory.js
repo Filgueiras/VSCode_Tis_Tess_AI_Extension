@@ -2,6 +2,7 @@
 // ─── Tess TIS — Chat History Manager ────────────────────────────────────────
 // Responsabilidade: persistir e gerir o histórico de conversas.
 // Armazena em globalStorageUri/tis_history.json — não polui o workspace.
+// Sessões são associadas ao workspacePath — cada projecto tem o seu contexto.
 
 'use strict';
 
@@ -39,13 +40,15 @@ function init(context) {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 /**
- * Cria uma nova sessão de chat.
+ * Cria uma nova sessão de chat associada a um workspace.
  * O título é gerado automaticamente a partir da primeira mensagem.
  *
- * @param {string} firstMessage - Primeira mensagem do utilizador
- * @returns {{ id: string, title: string, createdAt: string }}
+ * @param {string} firstMessage   - Primeira mensagem do utilizador
+ * @param {string} [model]        - Modelo seleccionado
+ * @param {string} [workspacePath] - Caminho absoluto do workspace activo
+ * @returns {string} ID da sessão criada
  */
-function createSession(firstMessage, model = 'auto') {
+function createSession(firstMessage, model = 'auto', workspacePath = null) {
     _assertInit();
 
     const sessions = _read();
@@ -55,7 +58,8 @@ function createSession(firstMessage, model = 'auto') {
     const session = {
         id,
         title,
-        model,                               // ← campo novo
+        model,
+        workspacePath: workspacePath ?? null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         messages:  [],
@@ -64,7 +68,7 @@ function createSession(firstMessage, model = 'auto') {
     sessions.unshift(session);
     _write(sessions);
 
-    return { id, title, createdAt: session.createdAt };
+    return id;
 }
 
 /**
@@ -101,18 +105,40 @@ function appendMessage(sessionId, role, content, model) {
 }
 
 /**
- * Devolve a lista de sessões sem as mensagens (para a sidebar).
+ * Devolve a lista de sessões sem as mensagens (para o drawer de histórico).
+ * Se workspacePath for fornecido, filtra apenas as sessões desse workspace.
  *
- * @returns {{ id: string, title: string, createdAt: string, updatedAt: string }[]}
+ * @param {string} [workspacePath] - Filtra por workspace. Se omitido, devolve todas.
+ * @returns {{ id: string, title: string, createdAt: string, updatedAt: string, workspacePath: string|null }[]}
  */
-function listSessions() {
+function listSessions(workspacePath = null) {
     _assertInit();
-    return _read().map(({ id, title, createdAt, updatedAt }) => ({
+    const all = _read();
+    const filtered = workspacePath
+        ? all.filter(s => s.workspacePath === workspacePath)
+        : all;
+
+    return filtered.map(({ id, title, createdAt, updatedAt, workspacePath: wp }) => ({
         id,
         title,
         createdAt,
         updatedAt,
+        workspacePath: wp ?? null,
     }));
+}
+
+/**
+ * Devolve a sessão mais recente para um workspace específico.
+ * Usado em _onWebviewReady para restaurar a conversa correcta ao abrir um projecto.
+ *
+ * @param {string} workspacePath
+ * @returns {ChatSession | null}
+ */
+function getLatestSessionForWorkspace(workspacePath) {
+    _assertInit();
+    const sessions = _read();
+    // Já estão ordenadas por unshift — a primeira é a mais recente
+    return sessions.find(s => s.workspacePath === workspacePath) ?? null;
 }
 
 /**
@@ -255,6 +281,8 @@ function _assertInit() {
  * @typedef {Object} ChatSession
  * @property {string}        id
  * @property {string}        title
+ * @property {string}        model
+ * @property {string|null}   workspacePath
  * @property {string}        createdAt
  * @property {string}        updatedAt
  * @property {ChatMessage[]} messages
@@ -273,6 +301,7 @@ module.exports = {
     createSession,
     appendMessage,
     listSessions,
+    getLatestSessionForWorkspace,
     getSession,
     renameSession,
     deleteSession,

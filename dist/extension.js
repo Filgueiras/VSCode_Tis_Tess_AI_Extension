@@ -15096,6 +15096,229 @@ var require_axios = __commonJS({
   }
 });
 
+// src/api.js
+var require_api = __commonJS({
+  "src/api.js"(exports2, module2) {
+    "use strict";
+    var axios = require_axios();
+    var BASE_URL = "https://api.tess.im";
+    var REQUEST_TIMEOUT = 3e5;
+    var FIRST_BYTE_LIMIT = 3e4;
+    var INACTIVITY_LIMIT = 6e4;
+    var _abortController = null;
+    function cancelStream() {
+      _abortController?.abort();
+      _abortController = null;
+    }
+    async function readErrorBody(data) {
+      if (typeof data?.pipe !== "function") {
+        console.error("[Tess:api] Erro API:", JSON.stringify(data));
+        return data?.message || data?.error || data?.detail || null;
+      }
+      const chunks = [];
+      await new Promise((res, rej) => {
+        data.on("data", (c) => chunks.push(c));
+        data.on("end", res);
+        data.on("error", rej);
+      });
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString());
+        console.error("[Tess:api] Erro API:", JSON.stringify(body));
+        return body.message || body.error || body.detail || null;
+      } catch {
+        return null;
+      }
+    }
+    async function postWithRetry(url, body, headers, signal) {
+      const cfg = { headers, responseType: "stream", timeout: REQUEST_TIMEOUT, signal };
+      try {
+        return await axios.post(url, body, cfg);
+      } catch (err) {
+        if (err.response?.status === 429) {
+          const wait = parseInt(err.response.headers["retry-after"] ?? "5", 10);
+          console.warn(`[Tess:api] Rate limit. Aguardando ${wait}s...`);
+          await new Promise((r) => setTimeout(r, wait * 1e3));
+          return await axios.post(url, body, cfg);
+        }
+        throw err;
+      }
+    }
+    async function startStream({ apiKey, agentId, model, messages, onChunk, onUsage, onEnd, onError }) {
+      cancelStream();
+      _abortController = new AbortController();
+      const signal = _abortController.signal;
+      const body = { messages, stream: true };
+      if (model && model !== "auto") body.model = model;
+      console.log(`[Tess] \u2192 POST ${BASE_URL}/agents/${agentId}/openai/chat/completions (model: ${model})`);
+      try {
+        const response = await postWithRetry(
+          `${BASE_URL}/agents/${agentId}/openai/chat/completions`,
+          body,
+          {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          signal
+        );
+        await new Promise((resolve) => {
+          let buffer = "";
+          let receivedChunk = false;
+          let doneSent = false;
+          const firstByteTimer = setTimeout(() => {
+            if (!receivedChunk) {
+              console.warn("[Tess] Timeout: sem resposta em 30s");
+              response.data.destroy();
+              onError("O modelo demorou demasiado a responder. Tente novamente.");
+              resolve();
+            }
+          }, FIRST_BYTE_LIMIT);
+          let inactivityTimer = null;
+          function resetInactivity() {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+              if (!doneSent) {
+                console.warn("[Tess] Timeout de inactividade");
+                response.data.destroy();
+                onError("A resposta parou a meio sem terminar. Tente novamente.");
+                resolve();
+              }
+            }, INACTIVITY_LIMIT);
+          }
+          function finish() {
+            if (doneSent) return;
+            doneSent = true;
+            clearTimeout(firstByteTimer);
+            clearTimeout(inactivityTimer);
+            onEnd();
+            resolve();
+          }
+          response.data.on("data", (chunk) => {
+            receivedChunk = true;
+            resetInactivity();
+            buffer += chunk.toString();
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim();
+              if (raw === "[DONE]") {
+                finish();
+                return;
+              }
+              try {
+                const parsed = JSON.parse(raw);
+                const text = parsed.choices?.[0]?.delta?.content;
+                if (text) onChunk(text);
+                if (parsed.usage) onUsage(parsed.usage);
+              } catch {
+              }
+            }
+          });
+          response.data.on("end", () => {
+            if (buffer.startsWith("data: ")) {
+              const raw = buffer.slice(6).trim();
+              if (raw && raw !== "[DONE]") {
+                try {
+                  const text = JSON.parse(raw).choices?.[0]?.delta?.content;
+                  if (text) onChunk(text);
+                } catch {
+                }
+              }
+            }
+            finish();
+          });
+          response.data.on("error", (err) => {
+            clearTimeout(firstByteTimer);
+            clearTimeout(inactivityTimer);
+            console.error("[Tess] Erro de stream:", err.message);
+            onError(`Erro de liga\xE7\xE3o: ${err.message}`);
+            resolve();
+          });
+        });
+      } catch (err) {
+        console.error("[Tess] Erro na chamada:", err.message, "| status:", err.response?.status);
+        if (axios.isCancel(err) || err.name === "CanceledError" || err.name === "AbortError") {
+          return;
+        }
+        let msg = err.message;
+        if (err.response?.data) {
+          msg = await readErrorBody(err.response.data) ?? msg;
+        }
+        onError(`Erro: ${msg}`);
+      } finally {
+        _abortController = null;
+      }
+    }
+    module2.exports = { startStream, cancelStream };
+  }
+});
+
+// src/models.js
+var require_models = __commonJS({
+  "src/models.js"(exports2, module2) {
+    var axios = require_axios();
+    var BASE_URL = "https://api.tess.im";
+    var MODELS = [
+      { id: "auto", label: "Auto (Tess escolhe)" },
+      { id: "tess-5", label: "Tess 5" },
+      { id: "claude-opus-4-5", label: "Claude Opus 4.5" },
+      { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+      { id: "gpt-4o", label: "GPT-4o" },
+      { id: "gpt-4.1", label: "GPT-4.1" },
+      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" }
+    ];
+    var MODEL_LIMITS = {
+      "auto": 128e3,
+      "tess-5": 128e3,
+      "claude-opus-4-5": 2e5,
+      "claude-sonnet-4-5": 2e5,
+      "claude-haiku-4-5": 2e5,
+      "gpt-4o": 128e3,
+      "gpt-4.1": 128e3,
+      "gemini-2.5-pro": 1e6,
+      "gemini-2.0-flash": 1e6
+    };
+    async function fetchAgentModels(apiKey, agentId) {
+      try {
+        const res = await axios.get(`${BASE_URL}/agents/${agentId}`, {
+          headers: { "Authorization": `Bearer ${apiKey}` },
+          timeout: 1e4
+        });
+        const questions = res.data?.questions ?? res.data?.data?.questions ?? [];
+        const modelQ = questions.find((q) => q.name === "model" || q.slug === "model");
+        if (!modelQ) return null;
+        const raw = modelQ.options ?? modelQ.answers ?? modelQ.choices ?? [];
+        const models = raw.filter((o) => o.value || o.id).map((o) => ({
+          id: o.value ?? o.id,
+          label: o.label ?? o.name ?? o.value ?? o.id
+        }));
+        return models.length > 0 ? models : null;
+      } catch (err) {
+        console.warn("[Tess] N\xE3o foi poss\xEDvel obter modelos do agente:", err.message);
+        return void 0;
+      }
+    }
+    async function syncAgentConfig(webview, apiKey, agentId) {
+      if (!apiKey || !agentId) return;
+      const models = await fetchAgentModels(apiKey, agentId);
+      const fixed = models === null;
+      let modelList;
+      if (fixed) modelList = [{ id: "auto", label: "Padr\xE3o do agente" }];
+      else if (models === void 0) modelList = MODELS;
+      else modelList = models;
+      webview.postMessage({ type: "setModels", models: modelList, fixed });
+    }
+    module2.exports = {
+      MODELS,
+      MODEL_LIMITS,
+      fetchAgentModels,
+      syncAgentConfig
+    };
+  }
+});
+
 // src/workspace.js
 var require_workspace = __commonJS({
   "src/workspace.js"(exports2, module2) {
@@ -15191,6 +15414,100 @@ ${lines.join("\n")}`;
       sendWorkspaceContext,
       getCurrentCode
     };
+  }
+});
+
+// src/webview.js
+var require_webview = __commonJS({
+  "src/webview.js"(exports2, module2) {
+    "use strict";
+    var vscode2 = require("vscode");
+    var crypto = require("crypto");
+    function getNonce() {
+      return crypto.randomBytes(16).toString("hex");
+    }
+    function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
+      const nonce = getNonce();
+      const cspSource = webview.cspSource;
+      const logoUri = webview.asWebviewUri(
+        vscode2.Uri.joinPath(extensionUri, "tis_nobg.png")
+      );
+      const cssUri = webview.asWebviewUri(
+        vscode2.Uri.joinPath(extensionUri, "media", "webview", "webview.css")
+      );
+      const scriptUri = webview.asWebviewUri(
+        vscode2.Uri.joinPath(extensionUri, "media", "webview", "webview-script.js")
+      );
+      const modelOptions = models.map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
+      const limitsJson = JSON.stringify(modelLimits);
+      return `<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none';
+                 style-src ${cspSource} 'unsafe-inline';
+                 script-src ${cspSource} 'nonce-${nonce}';
+                 img-src ${cspSource} data:;
+                 connect-src https://api.tess.im;">
+  <title>Tess AI</title>
+  <link rel="stylesheet" href="${cssUri}">
+</head>
+<body>
+
+  <!-- \u2500\u2500 Toolbar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <div id="toolbar">
+    <div id="modelRow">
+      <label>Modelo:</label>
+      <select id="modelSelect">${modelOptions}</select>
+    </div>
+    <button class="btn-ghost" id="historyBtn">Hist\xF3rico</button>
+    <button class="btn-ghost" id="clearBtn">Limpar</button>
+  </div>
+
+  <!-- \u2500\u2500 \xC1rea de mensagens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <div id="messages">
+    <div id="watermark">
+      <img src="${logoUri}" alt="TIS">
+    </div>
+    <div id="empty">
+      Ol\xE1! Como posso ajudar?<br>
+      <small>O c\xF3digo do editor activo \xE9 inclu\xEDdo automaticamente.</small>
+    </div>
+  </div>
+
+  <!-- \u2500\u2500 Input \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <div id="inputArea">
+    <div id="actionButtons">
+      <button class="btn-ghost" id="codeBtn">\u{1F4CE} Adicionar ficheiros</button>
+      <button class="btn-ghost" id="contextBtn">\u{1F5C2}\uFE0F Contexto do projecto</button>
+    </div>
+    <div id="inputRow">
+      <textarea
+        id="userInput"
+        placeholder="Escreva aqui... (Enter envia, Shift+Enter nova linha)"
+        rows="1"
+      ></textarea>
+      <button id="sendBtn">Enviar</button>
+    </div>
+    <div id="contextStatus">
+      <div id="contextBar"><div id="contextFill"></div></div>
+      <span id="contextLabel">contexto: 0 tok</span>
+    </div>
+    <div id="hint">Enter para enviar \xB7 Shift+Enter para nova linha</div>
+  </div>
+
+  <!-- \u2500\u2500 Vari\xE1veis globais \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <script nonce="${nonce}">window.MODEL_LIMITS = ${limitsJson};</script>
+
+  <!-- \u2500\u2500 Script principal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+
+</body>
+</html>`;
+    }
+    module2.exports = { buildHtml };
   }
 });
 
@@ -15331,371 +15648,6 @@ function hello() { return 'world'; }
   }
 });
 
-// src/api.js
-var require_api = __commonJS({
-  "src/api.js"(exports2, module2) {
-    "use strict";
-    var vscode2 = require("vscode");
-    var axios = require_axios();
-    var { getWorkspaceTree, getCurrentCode } = require_workspace();
-    var { getToolsSystemPrompt } = require_tools();
-    var BASE_URL = "https://api.tess.im";
-    var REQUEST_TIMEOUT = 3e5;
-    var FIRST_BYTE_LIMIT = 3e4;
-    var INACTIVITY_LIMIT = 6e4;
-    async function readErrorBody(data) {
-      if (typeof data?.pipe !== "function") {
-        console.error("[Tess:api] Erro API:", JSON.stringify(data));
-        return data?.message || data?.error || data?.detail || null;
-      }
-      const chunks = [];
-      await new Promise((res, rej) => {
-        data.on("data", (c) => chunks.push(c));
-        data.on("end", res);
-        data.on("error", rej);
-      });
-      try {
-        const body = JSON.parse(Buffer.concat(chunks).toString());
-        console.error("[Tess:api] Erro API:", JSON.stringify(body));
-        return body.message || body.error || body.detail || null;
-      } catch {
-        return null;
-      }
-    }
-    async function postWithRetry(url, body, headers, signal) {
-      try {
-        return await axios.post(url, body, {
-          headers,
-          responseType: "stream",
-          timeout: REQUEST_TIMEOUT,
-          signal
-        });
-      } catch (error) {
-        if (error.response?.status === 429) {
-          const retryAfter = Number.parseInt(
-            error.response.headers["retry-after"] ?? "5",
-            10
-          );
-          console.warn(`[Tess:api] Rate limit atingido. Aguardando ${retryAfter}s...`);
-          await new Promise((res) => setTimeout(res, retryAfter * 1e3));
-          return await axios.post(url, body, {
-            headers,
-            responseType: "stream",
-            timeout: REQUEST_TIMEOUT,
-            signal
-          });
-        }
-        throw error;
-      }
-    }
-    async function handleSend(view, userText, model, history, signal, lastEditor, isToolContinuation = false) {
-      const config = vscode2.workspace.getConfiguration("tess");
-      const apiKey = config.get("apiKey");
-      const agentId = config.get("agentId");
-      if (!apiKey) {
-        view.webview.postMessage({ type: "error", text: "API Key n\xE3o configurada. V\xE1 a Defini\xE7\xF5es \u2192 tess.apiKey" });
-        return null;
-      }
-      if (!agentId) {
-        view.webview.postMessage({ type: "error", text: "Agent ID n\xE3o configurado. V\xE1 a Defini\xE7\xF5es \u2192 tess.agentId" });
-        return null;
-      }
-      try {
-        let fullUserText = userText;
-        if (!isToolContinuation && userText) {
-          const codeInfo = getCurrentCode(lastEditor);
-          if (codeInfo) {
-            fullUserText = `${userText}
-
-\`\`\`${codeInfo.language}
-${codeInfo.code}
-\`\`\``;
-          }
-          if (history.length === 0) {
-            const tree = await getWorkspaceTree();
-            if (tree) fullUserText = `${tree}
-
----
-
-${fullUserText}`;
-          }
-        }
-        const messages = [
-          { role: "system", content: getToolsSystemPrompt() },
-          ...history.map((m) => ({ role: m.role, content: m.content })),
-          { role: "user", content: fullUserText || userText }
-        ];
-        const body = { messages, stream: true };
-        if (model !== "auto") body.model = model;
-        console.log(`[Tess] \u2192 POST ${BASE_URL}/agents/${agentId}/openai/chat/completions (model: ${model})`);
-        view.webview.postMessage({ type: "startResponse" });
-        const response = await postWithRetry(
-          `${BASE_URL}/agents/${agentId}/openai/chat/completions`,
-          body,
-          {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-          },
-          signal
-        );
-        return await new Promise((resolve) => {
-          let buffer = "";
-          let fullText = "";
-          let receivedChunk = false;
-          let doneSent = false;
-          const firstByteTimer = setTimeout(() => {
-            if (!receivedChunk) {
-              console.warn("[Tess] Timeout: sem resposta em 30s");
-              response.data.destroy();
-              view.webview.postMessage({
-                type: "error",
-                text: "O modelo demorou demasiado a responder. Tente novamente."
-              });
-              resolve(null);
-            }
-          }, FIRST_BYTE_LIMIT);
-          let inactivityTimer = null;
-          function resetInactivity() {
-            clearTimeout(inactivityTimer);
-            inactivityTimer = setTimeout(() => {
-              if (!doneSent) {
-                console.warn("[Tess] Timeout de inactividade: stream parou sem fechar");
-                response.data.destroy();
-                view.webview.postMessage({
-                  type: "error",
-                  text: "A resposta parou a meio sem terminar. Tente novamente."
-                });
-                resolve(null);
-              }
-            }, INACTIVITY_LIMIT);
-          }
-          function finish(text) {
-            if (doneSent) return;
-            doneSent = true;
-            clearTimeout(firstByteTimer);
-            clearTimeout(inactivityTimer);
-            view.webview.postMessage({ type: "endResponse" });
-            resolve(text || null);
-          }
-          response.data.on("data", (chunk) => {
-            receivedChunk = true;
-            resetInactivity();
-            buffer += chunk.toString();
-            const lines = buffer.split("\n");
-            buffer = lines.pop();
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const raw = line.slice(6).trim();
-              if (raw === "[DONE]") {
-                finish(fullText);
-                return;
-              }
-              try {
-                const parsed = JSON.parse(raw);
-                const text = parsed.choices?.[0]?.delta?.content;
-                if (text) {
-                  fullText += text;
-                  view.webview.postMessage({ type: "chunk", text });
-                }
-                if (parsed.usage) {
-                  view.webview.postMessage({ type: "usage", usage: parsed.usage });
-                }
-              } catch {
-              }
-            }
-          });
-          response.data.on("end", () => {
-            if (buffer.startsWith("data: ")) {
-              const raw = buffer.slice(6).trim();
-              if (raw && raw !== "[DONE]") {
-                try {
-                  const parsed = JSON.parse(raw);
-                  const text = parsed.choices?.[0]?.delta?.content;
-                  if (text) {
-                    fullText += text;
-                    view.webview.postMessage({ type: "chunk", text });
-                  }
-                } catch {
-                }
-              }
-            }
-            finish(fullText);
-          });
-          response.data.on("error", (err) => {
-            clearTimeout(firstByteTimer);
-            clearTimeout(inactivityTimer);
-            console.error("[Tess] Erro de stream:", err.message);
-            view.webview.postMessage({
-              type: "error",
-              text: `Erro de liga\xE7\xE3o: ${err.message}`
-            });
-            resolve(null);
-          });
-        });
-      } catch (error) {
-        console.error("[Tess] Erro na chamada:", error.message, "| code:", error.code, "| status:", error.response?.status);
-        if (axios.isCancel(error) || error.name === "CanceledError" || error.name === "AbortError") {
-          view.webview.postMessage({ type: "cancelled" });
-          return null;
-        }
-        let msg = error.message;
-        if (error.response?.data) {
-          try {
-            msg = await readErrorBody(error.response.data) ?? msg;
-          } catch (e) {
-            console.error("[Tess] Falha ao ler erro:", e.message);
-          }
-        }
-        view.webview.postMessage({ type: "error", text: `Erro: ${msg}` });
-        return null;
-      }
-    }
-    module2.exports = { handleSend };
-  }
-});
-
-// src/models.js
-var require_models = __commonJS({
-  "src/models.js"(exports2, module2) {
-    var axios = require_axios();
-    var BASE_URL = "https://api.tess.im";
-    var MODELS = [
-      { id: "auto", label: "Auto (Tess escolhe)" },
-      { id: "tess-5", label: "Tess 5" },
-      { id: "claude-opus-4-5", label: "Claude Opus 4.5" },
-      { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
-      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-      { id: "gpt-4o", label: "GPT-4o" },
-      { id: "gpt-4.1", label: "GPT-4.1" },
-      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-      { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" }
-    ];
-    var MODEL_LIMITS = {
-      "auto": 128e3,
-      "tess-5": 128e3,
-      "claude-opus-4-5": 2e5,
-      "claude-sonnet-4-5": 2e5,
-      "claude-haiku-4-5": 2e5,
-      "gpt-4o": 128e3,
-      "gpt-4.1": 128e3,
-      "gemini-2.5-pro": 1e6,
-      "gemini-2.0-flash": 1e6
-    };
-    async function fetchAgentModels(apiKey, agentId) {
-      try {
-        const res = await axios.get(`${BASE_URL}/agents/${agentId}`, {
-          headers: { "Authorization": `Bearer ${apiKey}` },
-          timeout: 1e4
-        });
-        const questions = res.data?.questions ?? res.data?.data?.questions ?? [];
-        const modelQ = questions.find((q) => q.name === "model" || q.slug === "model");
-        if (!modelQ) return null;
-        const raw = modelQ.options ?? modelQ.answers ?? modelQ.choices ?? [];
-        const models = raw.filter((o) => o.value || o.id).map((o) => ({
-          id: o.value ?? o.id,
-          label: o.label ?? o.name ?? o.value ?? o.id
-        }));
-        return models.length > 0 ? models : null;
-      } catch (err) {
-        console.warn("[Tess] N\xE3o foi poss\xEDvel obter modelos do agente:", err.message);
-        return void 0;
-      }
-    }
-    async function syncAgentConfig(view, apiKey, agentId) {
-      if (!apiKey || !agentId) return;
-      const models = await fetchAgentModels(apiKey, agentId);
-      view.webview.postMessage({
-        type: "setModels",
-        models: models !== void 0 ? models : MODELS
-      });
-    }
-    module2.exports = {
-      MODELS,
-      MODEL_LIMITS,
-      fetchAgentModels,
-      syncAgentConfig
-    };
-  }
-});
-
-// src/webview.js
-var require_webview = __commonJS({
-  "src/webview.js"(exports2, module2) {
-    "use strict";
-    function buildHtml(logoUri, cssUri, scriptUri, models, modelLimits, cspSource, nonce) {
-      const modelOptions = models.map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
-      const limitsJson = JSON.stringify(modelLimits);
-      return `<!DOCTYPE html>
-<html lang="pt">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none';
-                 style-src ${cspSource} 'unsafe-inline';
-                 script-src ${cspSource} 'nonce-${nonce}';
-                 img-src ${cspSource} data:;
-                 connect-src https://api.tess.im;">
-  <title>Tess AI</title>
-  <link rel="stylesheet" href="${cssUri}">
-</head>
-<body>
-
-  <!-- \u2500\u2500 Toolbar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
-  <div id="toolbar">
-    <div id="modelRow">
-      <label>Modelo:</label>
-      <select id="modelSelect">${modelOptions}</select>
-    </div>
-    <button class="btn-ghost" id="historyBtn">Hist\xF3rico</button>
-    <button class="btn-ghost" id="clearBtn">Limpar</button>
-  </div>
-
-  <!-- \u2500\u2500 \xC1rea de mensagens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
-  <div id="messages">
-    <div id="watermark">
-      <img src="${logoUri}" alt="TIS">
-    </div>
-    <div id="empty">
-      Ol\xE1! Como posso ajudar?<br>
-      <small>O c\xF3digo do editor activo \xE9 inclu\xEDdo automaticamente.</small>
-    </div>
-  </div>
-
-  <!-- \u2500\u2500 Input \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
-  <div id="inputArea">
-    <div id="actionButtons">
-      <button class="btn-ghost" id="codeBtn">\u{1F4CE} Adicionar ficheiros</button>
-      <button class="btn-ghost" id="contextBtn">\u{1F5C2}\uFE0F Contexto do projecto</button>
-    </div>
-    <div id="inputRow">
-      <textarea
-        id="userInput"
-        placeholder="Escreva aqui... (Enter envia, Shift+Enter nova linha)"
-        rows="1"
-      ></textarea>
-      <button id="sendBtn">Enviar</button>
-    </div>
-    <div id="contextStatus">
-      <div id="contextBar"><div id="contextFill"></div></div>
-      <span id="contextLabel">contexto: 0 tok</span>
-    </div>
-    <div id="hint">Enter para enviar \xB7 Shift+Enter para nova linha</div>
-  </div>
-
-  <!-- \u2500\u2500 Vari\xE1veis globais \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
-  <script nonce="${nonce}">window.MODEL_LIMITS = ${limitsJson};</script>
-
-  <!-- \u2500\u2500 Script principal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-
-</body>
-</html>`;
-    }
-    module2.exports = { buildHtml };
-  }
-});
-
 // src/chatHistory.js
 var require_chatHistory = __commonJS({
   "src/chatHistory.js"(exports2, module2) {
@@ -15716,7 +15668,7 @@ var require_chatHistory = __commonJS({
         _write([]);
       }
     }
-    function createSession(firstMessage, model = "auto") {
+    function createSession(firstMessage, model = "auto", workspacePath = null) {
       _assertInit();
       const sessions = _read();
       const id = crypto.randomUUID();
@@ -15725,14 +15677,14 @@ var require_chatHistory = __commonJS({
         id,
         title,
         model,
-        // ← campo novo
+        workspacePath: workspacePath ?? null,
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
         updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
         messages: []
       };
       sessions.unshift(session);
       _write(sessions);
-      return { id, title, createdAt: session.createdAt };
+      return id;
     }
     function appendMessage(sessionId, role, content, model) {
       _assertInit();
@@ -15752,14 +15704,22 @@ var require_chatHistory = __commonJS({
       _write(sessions);
       return true;
     }
-    function listSessions() {
+    function listSessions(workspacePath = null) {
       _assertInit();
-      return _read().map(({ id, title, createdAt, updatedAt }) => ({
+      const all = _read();
+      const filtered = workspacePath ? all.filter((s) => s.workspacePath === workspacePath) : all;
+      return filtered.map(({ id, title, createdAt, updatedAt, workspacePath: wp }) => ({
         id,
         title,
         createdAt,
-        updatedAt
+        updatedAt,
+        workspacePath: wp ?? null
       }));
+    }
+    function getLatestSessionForWorkspace(workspacePath) {
+      _assertInit();
+      const sessions = _read();
+      return sessions.find((s) => s.workspacePath === workspacePath) ?? null;
     }
     function getSession(sessionId) {
       _assertInit();
@@ -15831,6 +15791,7 @@ var require_chatHistory = __commonJS({
       createSession,
       appendMessage,
       listSessions,
+      getLatestSessionForWorkspace,
       getSession,
       renameSession,
       deleteSession,
@@ -15844,224 +15805,235 @@ var require_provider = __commonJS({
   "src/provider.js"(exports2, module2) {
     "use strict";
     var vscode2 = require("vscode");
-    var { handleSend } = require_api();
-    var { syncAgentConfig, MODELS, MODEL_LIMITS } = require_models();
-    var { getCurrentCode, pickWorkspaceFiles, sendWorkspaceContext } = require_workspace();
+    var { startStream, cancelStream } = require_api();
+    var { syncAgentConfig } = require_models();
+    var { getCurrentCode, getWorkspaceTree, pickFiles, sendWorkspaceContext } = require_workspace();
     var { buildHtml } = require_webview();
     var { executeTool } = require_tools();
     var chatHistory2 = require_chatHistory();
-    function _formatSessionDate(isoDate) {
-      const date = new Date(isoDate);
-      const now = /* @__PURE__ */ new Date();
-      if (date.toDateString() === now.toDateString()) {
-        return date.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
-      }
-      return date.toLocaleDateString("pt-PT", { day: "2-digit", month: "short" });
+    function _currentWorkspacePath() {
+      return vscode2.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     }
-    var TessChatViewProvider2 = class {
-      _view = null;
-      _abortController = null;
-      _lastEditor = null;
-      _activeSessionId = null;
+    var TessViewProvider2 = class {
+      static viewType = "tess.chatView";
       constructor(context) {
         this._context = context;
-        context.subscriptions.push(
-          vscode2.window.onDidChangeActiveTextEditor((editor) => {
-            if (editor) this._lastEditor = editor;
-          })
-        );
+        this._view = null;
+        this._activeSessionId = null;
       }
-      insertCode() {
-        if (!this._view) return;
-        this._view.webview.postMessage({
-          type: "insertCode",
-          code: getCurrentCode(this._lastEditor)
-        });
-        this._view.show(true);
-      }
-      // ── WebView lifecycle ────────────────────────────────────────────────────
       resolveWebviewView(webviewView) {
         this._view = webviewView;
         webviewView.webview.options = {
           enableScripts: true,
-          retainContextWhenHidden: true,
           localResourceRoots: [
             this._context.extensionUri,
-            vscode2.Uri.joinPath(this._context.extensionUri, "media", "webview")
+            vscode2.Uri.joinPath(this._context.extensionUri, "media")
           ]
         };
-        const nonce = require("crypto").randomBytes(16).toString("hex");
-        const logoUri = webviewView.webview.asWebviewUri(
-          vscode2.Uri.joinPath(this._context.extensionUri, "TIS_vector_vscode.svg")
-        );
-        const cssUri = webviewView.webview.asWebviewUri(
-          vscode2.Uri.joinPath(this._context.extensionUri, "media", "webview", "webview.css")
-        );
-        const scriptUri = webviewView.webview.asWebviewUri(
-          vscode2.Uri.joinPath(this._context.extensionUri, "media", "webview", "webview-script.js")
-        );
         webviewView.webview.html = buildHtml(
-          logoUri,
-          cssUri,
-          scriptUri,
-          MODELS,
-          MODEL_LIMITS,
-          webviewView.webview.cspSource,
-          nonce
+          webviewView.webview,
+          this._context.extensionUri
         );
         webviewView.webview.onDidReceiveMessage(async (msg) => {
           await this._handleMessage(msg);
         });
+        vscode2.workspace.onDidChangeConfiguration((e) => {
+          if (e.affectsConfiguration("tess")) {
+            const cfg = vscode2.workspace.getConfiguration("tess");
+            const apiKey = cfg.get("apiKey", "");
+            const agentId = cfg.get("agentId", "");
+            syncAgentConfig(webviewView.webview, apiKey, agentId);
+          }
+        });
       }
-      // ── Message handler ──────────────────────────────────────────────────────
+      // ─── Dispatcher ──────────────────────────────────────────────────────────
       async _handleMessage(msg) {
         switch (msg.type) {
           case "ready":
-            this._onWebviewReady();
+            await this._onWebviewReady();
             break;
           case "send":
             await this._handleSend(msg);
             break;
           case "cancel":
-            if (this._abortController) this._abortController.abort();
+            cancelStream();
+            this._view.webview.postMessage({ type: "endResponse" });
             break;
           case "pickFile":
-            await pickWorkspaceFiles(this._view);
+            await pickFiles(this._view.webview);
             break;
           case "getWorkspaceContext":
-            await sendWorkspaceContext(this._view);
-            break;
-          case "toolCall":
-            await this._handleToolCall(msg);
-            break;
-          case "saveHistory":
-            this._context.workspaceState.update("tess.history", msg.history);
-            this._context.workspaceState.update("tess.model", msg.model);
+            await sendWorkspaceContext(this._view.webview);
             break;
           case "newChat":
             this._activeSessionId = null;
             break;
-          case "saveFile":
-            vscode2.commands.executeCommand("tess.saveFile", {
-              filename: msg.filename,
-              content: msg.content
-            });
-            break;
-          // ── Histórico inline (drawer no WebView) ─────────────────────
           case "getHistory":
             this._sendHistoryList();
             break;
           case "loadSession":
             this._loadSessionById(msg.id);
             break;
+          case "renameSession":
+            this._renameSession(msg.id, msg.title);
+            break;
+          case "deleteSession":
+            this._deleteSession(msg.id);
+            break;
+          case "toolCall":
+            await this._handleToolCall(msg);
+            break;
+          case "saveFile":
+            await this._handleSaveFile(msg);
+            break;
         }
       }
-      // ── Histórico inline ─────────────────────────────────────────────────────
+      // ─── Ready ───────────────────────────────────────────────────────────────
+      async _onWebviewReady() {
+        const cfg = vscode2.workspace.getConfiguration("tess");
+        const apiKey = cfg.get("apiKey", "");
+        const agentId = cfg.get("agentId", "");
+        await syncAgentConfig(this._view.webview, apiKey, agentId);
+        const workspacePath = _currentWorkspacePath();
+        const latestSession = chatHistory2.getLatestSessionForWorkspace(workspacePath);
+        if (latestSession) {
+          this._activeSessionId = latestSession.id;
+          this._loadSessionById(latestSession.id);
+        }
+      }
+      // ─── Envio ───────────────────────────────────────────────────────────────
+      async _handleSend(msg) {
+        const webview = this._view.webview;
+        const apiKey = vscode2.workspace.getConfiguration("tess").get("apiKey", "");
+        const agentId = vscode2.workspace.getConfiguration("tess").get("agentId", "");
+        const workspacePath = _currentWorkspacePath();
+        if (!apiKey || !agentId) {
+          webview.postMessage({ type: "error", text: "API Key ou Agent ID n\xE3o configurados." });
+          return;
+        }
+        if (!this._activeSessionId) {
+          this._activeSessionId = chatHistory2.createSession(
+            msg.userText,
+            msg.model,
+            workspacePath
+          );
+        }
+        let messagesWithContext = msg.history ?? [];
+        if (!msg.isTool) {
+          const isFirst = messagesWithContext.length === 0;
+          const code = getCurrentCode();
+          const systemParts = [];
+          if (isFirst) {
+            const tree = getWorkspaceTree();
+            if (tree) systemParts.push("Estrutura do projecto:\n" + tree);
+          }
+          if (code) systemParts.push("Ficheiro activo:\n" + code);
+          if (systemParts.length > 0) {
+            messagesWithContext = [
+              { role: "user", content: systemParts.join("\n\n") },
+              { role: "assistant", content: "Contexto recebido." },
+              ...messagesWithContext
+            ];
+          }
+        }
+        messagesWithContext = [
+          ...messagesWithContext,
+          { role: "user", content: msg.userText }
+        ];
+        webview.postMessage({ type: "startResponse" });
+        let assistantBuffer = "";
+        let ended = false;
+        const finish = (persist) => {
+          if (ended) return;
+          ended = true;
+          if (persist && !msg.isTool && assistantBuffer) {
+            chatHistory2.appendMessage(this._activeSessionId, "user", msg.userText);
+            chatHistory2.appendMessage(this._activeSessionId, "assistant", assistantBuffer);
+          }
+          webview.postMessage({ type: "endResponse" });
+        };
+        try {
+          await startStream({
+            apiKey,
+            agentId,
+            model: msg.model,
+            messages: messagesWithContext,
+            onChunk: (text) => {
+              assistantBuffer += text;
+              webview.postMessage({ type: "chunk", text });
+            },
+            onUsage: (usage) => webview.postMessage({ type: "usage", usage }),
+            onEnd: () => finish(true),
+            onError: (err) => {
+              finish(false);
+              webview.postMessage({ type: "error", text: err });
+            }
+          });
+        } catch (err) {
+          finish(false);
+          webview.postMessage({ type: "error", text: String(err) });
+        }
+      }
+      // ─── Histórico ───────────────────────────────────────────────────────────
       _sendHistoryList() {
-        const sessions = chatHistory2.listSessions();
-        const items = sessions.map((s) => ({
-          id: s.id,
-          title: s.title,
-          date: _formatSessionDate(s.updatedAt),
-          model: s.model ?? "auto"
-        }));
-        this._view?.webview.postMessage({ type: "historyList", sessions: items });
+        const sessions = chatHistory2.listSessions(_currentWorkspacePath());
+        this._view.webview.postMessage({ type: "historyList", sessions });
       }
       _loadSessionById(id) {
         const session = chatHistory2.getSession(id);
         if (!session) return;
-        this._activeSessionId = session.id;
-        const lastModel = [...session.messages].reverse().find((m) => m.role === "assistant" && m.model)?.model ?? "auto";
-        this._view?.webview.postMessage({
+        this._activeSessionId = id;
+        this._view.webview.postMessage({
           type: "restoreHistory",
-          history: session.messages,
-          model: lastModel
+          history: session.messages ?? [],
+          model: session.model ?? "auto"
         });
       }
-      // ── Send ─────────────────────────────────────────────────────────────────
-      async _handleSend(msg) {
-        if (!this._activeSessionId) {
-          this._activeSessionId = chatHistory2.createSession(msg.userText, msg.model);
-        }
-        if (msg.userText) {
-          chatHistory2.appendMessage(this._activeSessionId, "user", msg.userText, msg.model);
-        }
-        this._abortController = new AbortController();
-        try {
-          const response = await handleSend(
-            this._view,
-            msg.userText,
-            msg.model,
-            msg.history,
-            this._abortController.signal,
-            this._lastEditor,
-            msg.isTool ?? false
-          );
-          if (response) {
-            chatHistory2.appendMessage(this._activeSessionId, "assistant", response, msg.model);
-          }
-        } catch (err) {
-          if (err.name !== "AbortError") {
-            console.error("[Tess] Erro no handleSend:", err);
-            this._view?.webview.postMessage({
-              type: "error",
-              text: "Erro inesperado: " + (err.message ?? String(err))
-            });
-          }
-        } finally {
-          this._abortController = null;
-        }
+      _renameSession(id, title) {
+        if (!title?.trim()) return;
+        chatHistory2.renameSession(id, title.trim());
+        this._sendHistoryList();
       }
+      _deleteSession(id) {
+        chatHistory2.deleteSession(id);
+        if (this._activeSessionId === id) this._activeSessionId = null;
+        this._sendHistoryList();
+      }
+      // ─── Tool Calls ──────────────────────────────────────────────────────────
       async _handleToolCall(msg) {
-        const { tool, args, content } = msg;
-        const result = await executeTool(tool, args, content ?? null);
-        this._view.webview.postMessage({ type: "toolResult", tool, args, result });
+        const result = await executeTool(msg.tool, msg.args, msg.content);
+        this._view.webview.postMessage({
+          type: "toolResult",
+          tool: msg.tool,
+          args: msg.args,
+          result: result ?? ""
+        });
       }
-      // ── Config & restore ─────────────────────────────────────────────────────
-      _onWebviewReady() {
-        const sessions = chatHistory2.listSessions();
-        if (sessions.length > 0) {
-          const latest = sessions[0];
-          const session = chatHistory2.getSession(latest.id);
-          if (session?.messages?.length > 0) {
-            this._activeSessionId = session.id;
-            this._view.webview.postMessage({
-              type: "restoreHistory",
-              history: session.messages,
-              model: session.model ?? "auto"
-            });
-          }
-        }
-        this._syncConfig();
-        this._context.subscriptions.push(
-          vscode2.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration("tess")) this._syncConfig();
-          })
-        );
-      }
-      _syncConfig() {
-        const config = vscode2.workspace.getConfiguration("tess");
-        const apiKey = config.get("apiKey");
-        const agentId = config.get("agentId");
-        if (!apiKey || !agentId) {
-          if (this._view) this._view.webview.postMessage({ type: "notConfigured" });
-          return;
-        }
-        if (this._view) syncAgentConfig(this._view, apiKey, agentId);
+      // ─── Guardar ficheiro ─────────────────────────────────────────────────────
+      async _handleSaveFile(msg) {
+        const folders = vscode2.workspace.workspaceFolders;
+        const base = folders?.[0]?.uri ?? vscode2.Uri.file(require("os").homedir());
+        const uri = await vscode2.window.showSaveDialog({
+          defaultUri: vscode2.Uri.joinPath(base, msg.filename ?? "snippet.txt"),
+          filters: { "All files": ["*"] }
+        });
+        if (!uri) return;
+        await vscode2.workspace.fs.writeFile(uri, Buffer.from(msg.content ?? "", "utf8"));
+        await vscode2.window.showTextDocument(uri);
       }
     };
-    module2.exports = { TessChatViewProvider: TessChatViewProvider2 };
+    module2.exports = { TessViewProvider: TessViewProvider2 };
   }
 });
 
 // extension.js
 var vscode = require("vscode");
-var { TessChatViewProvider } = require_provider();
+var { TessViewProvider } = require_provider();
 var chatHistory = require_chatHistory();
 function activate(context) {
   console.log("[Tis.ai & Tess] Extens\xE3o activada");
   chatHistory.init(context);
-  const provider = new TessChatViewProvider(context);
+  const provider = new TessViewProvider(context);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       "tess.chatView",

@@ -128,19 +128,30 @@ function renderHistoryList(sessions) {
         return;
     }
 
+    // fecha qualquer menu aberto ao clicar fora
+    const closeAllMenus = () => {
+        document.querySelectorAll('.history-menu').forEach(m => m.remove());
+    };
+
     for (const session of sessions) {
+
         const item = document.createElement('div');
         item.style.cssText = [
+            'position:relative',
             'display:flex',
-            'flex-direction:column',
+            'align-items:center',
             'padding:8px 12px',
-            'cursor:pointer',
             'border-bottom:1px solid var(--vscode-panel-border)',
-            'transition:background 0.1s'
+            'transition:background 0.1s',
+            'gap:6px'
         ].join(';');
 
         item.addEventListener('mouseenter', () => { item.style.background = 'var(--vscode-list-hoverBackground)'; });
         item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+
+        // ── Coluna esquerda: título + meta ───────────────────────────────────
+        const left = document.createElement('div');
+        left.style.cssText = 'flex:1;min-width:0;cursor:pointer;';
 
         const titleEl = document.createElement('div');
         titleEl.textContent = session.title || 'Conversa sem t\u00edtulo';
@@ -167,14 +178,190 @@ function renderHistoryList(sessions) {
         meta.appendChild(dateEl);
         if (session.model && session.model !== 'auto') meta.appendChild(modelEl);
 
-        item.appendChild(titleEl);
-        item.appendChild(meta);
+        left.appendChild(titleEl);
+        left.appendChild(meta);
 
-        item.addEventListener('click', () => {
+        left.addEventListener('click', () => {
             vscode.postMessage({ type: 'loadSession', id: session.id });
             closeHistoryDrawer();
         });
 
+        // ── Botão ··· ────────────────────────────────────────────────────────
+        const menuBtn = document.createElement('button');
+        menuBtn.textContent = '\u22ef';
+        menuBtn.title = 'Op\u00e7\u00f5es';
+        menuBtn.style.cssText = [
+            'background:none',
+            'border:none',
+            'cursor:pointer',
+            'color:var(--vscode-descriptionForeground)',
+            'font-size:16px',
+            'padding:0 4px',
+            'line-height:1',
+            'flex-shrink:0',
+            'opacity:0',
+            'transition:opacity 0.15s'
+        ].join(';');
+
+        item.addEventListener('mouseenter', () => { menuBtn.style.opacity = '1'; });
+        item.addEventListener('mouseleave', () => { menuBtn.style.opacity = '0'; });
+
+        menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeAllMenus();
+
+            const menu = document.createElement('div');
+            menu.className = 'history-menu';
+            menu.style.cssText = [
+                'position:absolute',
+                'right:8px',
+                'top:28px',
+                'background:var(--vscode-menu-background, var(--vscode-editor-background))',
+                'border:1px solid var(--vscode-panel-border)',
+                'border-radius:4px',
+                'z-index:200',
+                'overflow:hidden',
+                'min-width:120px',
+                'box-shadow:0 2px 8px rgba(0,0,0,0.3)'
+            ].join(';');
+
+            const menuItemStyle = [
+                'padding:6px 12px',
+                'font-size:12px',
+                'cursor:pointer',
+                'color:var(--vscode-foreground)',
+                'white-space:nowrap'
+            ].join(';');
+
+            // ── Renomear ─────────────────────────────────────────────────────
+            const renameItem = document.createElement('div');
+            renameItem.textContent = '\u270f\ufe0f Renomear';
+            renameItem.style.cssText = menuItemStyle;
+            renameItem.addEventListener('mouseenter', () => { renameItem.style.background = 'var(--vscode-list-hoverBackground)'; });
+            renameItem.addEventListener('mouseleave', () => { renameItem.style.background = 'transparent'; });
+            renameItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.remove();
+
+                // input inline substitui o título
+                const input = document.createElement('input');
+                input.type  = 'text';
+                input.value = titleEl.textContent;
+                input.style.cssText = [
+                    'width:100%',
+                    'font-size:12px',
+                    'background:var(--vscode-input-background)',
+                    'color:var(--vscode-input-foreground)',
+                    'border:1px solid var(--vscode-focusBorder)',
+                    'border-radius:2px',
+                    'padding:1px 4px',
+                    'outline:none'
+                ].join(';');
+
+                titleEl.replaceWith(input);
+                input.focus();
+                input.select();
+
+                const commit = () => {
+                    const newTitle = input.value.trim();
+                    if (newTitle && newTitle !== session.title) {
+                        titleEl.textContent = newTitle;
+                        vscode.postMessage({ type: 'renameSession', id: session.id, title: newTitle });
+                    }
+                    input.replaceWith(titleEl);
+                };
+
+                input.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter')  { ev.preventDefault(); commit(); }
+                    if (ev.key === 'Escape') { input.replaceWith(titleEl); }
+                });
+                input.addEventListener('blur', commit);
+            });
+
+            // ── Apagar ───────────────────────────────────────────────────────
+            const deleteItem = document.createElement('div');
+            deleteItem.textContent = '\u{1F5D1}\ufe0f Apagar';
+            deleteItem.style.cssText = menuItemStyle + ';color:var(--vscode-errorForeground);';
+            deleteItem.addEventListener('mouseenter', () => { deleteItem.style.background = 'var(--vscode-list-hoverBackground)'; });
+            deleteItem.addEventListener('mouseleave', () => { deleteItem.style.background = 'transparent'; });
+            deleteItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.remove();
+
+                // confirmação inline
+                const confirm = document.createElement('div');
+                confirm.style.cssText = [
+                    'position:absolute',
+                    'right:8px',
+                    'top:28px',
+                    'background:var(--vscode-menu-background, var(--vscode-editor-background))',
+                    'border:1px solid var(--vscode-errorForeground)',
+                    'border-radius:4px',
+                    'z-index:200',
+                    'padding:8px 12px',
+                    'font-size:12px',
+                    'color:var(--vscode-foreground)',
+                    'box-shadow:0 2px 8px rgba(0,0,0,0.3)',
+                    'min-width:160px'
+                ].join(';');
+
+                const confirmText = document.createElement('div');
+                confirmText.textContent = 'Apagar esta conversa?';
+                confirmText.style.cssText = 'margin-bottom:8px;';
+
+                const btnRow = document.createElement('div');
+                btnRow.style.cssText = 'display:flex;gap:6px;justify-content:flex-end;';
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.textContent = 'Cancelar';
+                cancelBtn.style.cssText = [
+                    'padding:2px 8px',
+                    'font-size:11px',
+                    'cursor:pointer',
+                    'border-radius:3px',
+                    'border:1px solid var(--vscode-panel-border)',
+                    'background:transparent',
+                    'color:var(--vscode-foreground)'
+                ].join(';');
+                cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); confirm.remove(); });
+
+                const okBtn = document.createElement('button');
+                okBtn.textContent = 'Apagar';
+                okBtn.style.cssText = [
+                    'padding:2px 8px',
+                    'font-size:11px',
+                    'cursor:pointer',
+                    'border-radius:3px',
+                    'border:none',
+                    'background:var(--vscode-errorForeground)',
+                    'color:white'
+                ].join(';');
+                okBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    confirm.remove();
+                    item.remove();
+                    vscode.postMessage({ type: 'deleteSession', id: session.id });
+                });
+
+                btnRow.appendChild(cancelBtn);
+                btnRow.appendChild(okBtn);
+                confirm.appendChild(confirmText);
+                confirm.appendChild(btnRow);
+                item.appendChild(confirm);
+            });
+
+            menu.appendChild(renameItem);
+            menu.appendChild(deleteItem);
+            item.appendChild(menu);
+
+            // fecha ao clicar fora
+            setTimeout(() => {
+                document.addEventListener('click', closeAllMenus, { once: true });
+            }, 0);
+        });
+
+        item.appendChild(left);
+        item.appendChild(menuBtn);
         list.appendChild(item);
     }
 }
@@ -253,10 +440,8 @@ function appendInline(parent, text) {
 function renderMarkdown(text) {
     const container = document.createElement('div');
 
-    // Separa blocos de código do texto normal usando exec() com índices explícitos
-    // (mais robusto que split() para conteúdo multiline)
     const parts = [];
-    const codeBlockRegex = /```[\s\S]*?```/g;
+    const codeBlockRegex = /`{3}[\s\S]*?`{3}/g;
     let lastIndex = 0;
     let m;
     while ((m = codeBlockRegex.exec(text)) !== null) {
@@ -272,13 +457,12 @@ function renderMarkdown(text) {
 
     for (const part of parts) {
 
-        // ── Bloco de código ──────────────────────────────────────────────────
         if (part.type === 'code') {
-            const raw    = part.content;
-            const inner  = raw.slice(3, -3);
-            const lines  = inner.split('\n');
-            const lang   = lines[0].trim();
-            const code   = lines.slice(1).join('\n');
+            const raw   = part.content;
+            const inner = raw.slice(3, -3);
+            const lines = inner.split('\n');
+            const lang  = lines[0].trim();
+            const code  = lines.slice(1).join('\n');
 
             const wrapper = document.createElement('div');
             wrapper.style.cssText = 'position:relative;margin:8px 0;';
@@ -358,8 +542,6 @@ function renderMarkdown(text) {
             continue;
         }
 
- 
-
         // ── Texto normal — linha a linha ─────────────────────────────────────
         const lines = part.content.split('\n');
         let i = 0;
@@ -388,6 +570,74 @@ function renderMarkdown(text) {
                 hr.style.cssText = 'border:none;border-top:1px solid var(--vscode-panel-border);margin:8px 0;';
                 container.appendChild(hr);
                 i++;
+                continue;
+            }
+
+            // Tabelas — detecta linha com pipes
+            if (/^\|.+\|/.test(line.trim())) {
+                const tableLines = [];
+                while (i < lines.length && /^\|.+\|/.test(lines[i].trim())) {
+                    tableLines.push(lines[i]);
+                    i++;
+                }
+
+                const table = document.createElement('table');
+                table.style.cssText = [
+                    'border-collapse:collapse',
+                    'width:100%',
+                    'margin:8px 0',
+                    'font-size:12px'
+                ].join(';');
+
+                let headerDone = false;
+                let tbody = null;
+
+                for (const tline of tableLines) {
+                    // linha separadora (| --- | --- |) — ignora
+                    if (/^\|[\s\-:|]+\|$/.test(tline.trim())) continue;
+
+                    const cells = tline.trim()
+                        .replace(/^\|/, '')
+                        .replace(/\|$/, '')
+                        .split('|')
+                        .map(c => c.trim());
+
+                    if (!headerDone) {
+                        const thead = document.createElement('thead');
+                        const tr    = document.createElement('tr');
+                        for (const cell of cells) {
+                            const th = document.createElement('th');
+                            th.style.cssText = [
+                                'padding:4px 8px',
+                                'border:1px solid var(--vscode-panel-border)',
+                                'background:var(--vscode-editor-inactiveSelectionBackground)',
+                                'font-weight:600',
+                                'text-align:left'
+                            ].join(';');
+                            appendInline(th, cell);
+                            tr.appendChild(th);
+                        }
+                        thead.appendChild(tr);
+                        table.appendChild(thead);
+                        tbody = document.createElement('tbody');
+                        table.appendChild(tbody);
+                        headerDone = true;
+                    } else {
+                        const tr = document.createElement('tr');
+                        for (const cell of cells) {
+                            const td = document.createElement('td');
+                            td.style.cssText = [
+                                'padding:4px 8px',
+                                'border:1px solid var(--vscode-panel-border)'
+                            ].join(';');
+                            appendInline(td, cell);
+                            tr.appendChild(td);
+                        }
+                        tbody.appendChild(tr);
+                    }
+                }
+
+                container.appendChild(table);
                 continue;
             }
 
@@ -845,17 +1095,14 @@ window.addEventListener('message', ({ data }) => {
                 const emptyEl = document.getElementById('empty');
                 if (emptyEl) emptyEl.innerHTML = 'Ol\u00e1! Como posso ajudar?<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
             }
-            if (data.models === null) {
-                modelRowEl.classList.add('hidden');
-            } else {
-                modelRowEl.classList.remove('hidden');
-                const current = modelSelect.value;
-                modelSelect.innerHTML = data.models
-                    .map(m => '<option value="' + m.id + '"' + (m.id === current ? ' selected' : '') + '>' + m.label + '</option>')
-                    .join('');
-                if (!data.models.find(m => m.id === current)) modelSelect.selectedIndex = 0;
-                updateContextMeter();
-            }
+            modelRowEl.classList.remove('hidden');
+            const current = modelSelect.value;
+            modelSelect.innerHTML = data.models
+                .map(m => '<option value="' + m.id + '"' + (m.id === current ? ' selected' : '') + '>' + m.label + '</option>')
+                .join('');
+            if (!data.models.find(m => m.id === current)) modelSelect.selectedIndex = 0;
+            modelSelect.disabled = data.fixed === true;
+            updateContextMeter();
             break;
 
         // ── Histórico inline ─────────────────────────────────────────────────

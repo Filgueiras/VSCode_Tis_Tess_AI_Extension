@@ -5,7 +5,7 @@
       "name": "Executar Extensão",
       "type": "extensionHost",
       "request": "launch",
-      "preLaunchTask": "copy-assets",
+      "preLaunchTask": "build",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}"
       ],

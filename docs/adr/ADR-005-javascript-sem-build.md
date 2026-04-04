@@ -29,11 +29,15 @@ Usar JavaScript puro (CommonJS, Node.js) sem TypeScript, sem bundler e sem proce
 
 ## Notas para o próximo programador
 
-Para desenvolvimento local, basta:
+> ⚠️ Esta secção reflecte o estado actual (pós-ADR-009, ADR-011, ADR-016, ADR-017).
+> O princípio de "sem build no ciclo de iteração" foi revisto: o esbuild corre automaticamente
+> no F5 (< 200ms) para manter consistência entre desenvolvimento e produção.
+
+Para desenvolvimento local:
 
 ```bash
 npm install
-# Editar extension.js → F5 no VS Code → testar na janela de extensão
+# Editar ficheiros em src/ → F5 → o build corre automaticamente → testar
 ```
 
-Para publicar, seguir o processo descrito em **ADR-009**.
+Para publicar, seguir o processo descrito em **ADR-009** e **ADR-017**.

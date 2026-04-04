@@ -1,167 +1,111 @@
-# Tess Tis — Assistente de Código IA para VS Code
+# Tess Tis
 
-> O seu agente de IA no editor. Desenvolvido por **[TIS Angola](https://tis.ao)**.
-
-![Versão](https://img.shields.io/badge/versão-2.1.0-blue) ![VS Code](https://img.shields.io/badge/VS%20Code-1.60+-informational) ![Publisher](https://img.shields.io/badge/publisher-tis--angola-orange)
-
----
-
-**Tess Tis** liga o VS Code directamente à plataforma [Tess.im](https://tess.im) — um hub de inteligência artificial que dá acesso aos melhores modelos do mundo (Claude, GPT, Gemini, e modelos próprios) através de agentes configuráveis. Com esta extensão, o seu agente fica disponível na barra lateral do editor, com contexto de código automático, streaming em tempo real e sessões persistentes.
-
----
-
-## Primeiros passos em 2 minutos
-
-1. Instale a extensão via `Ctrl+Shift+P` → **Extensions: Install from VSIX** (ou pelo Marketplace)
-2. Crie um token em [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens)
-3. Crie um agente **Chat** em [tess.im](https://tess.im) e copie o ID do URL (`/agents/**12345**/edit`)
-4. Em `Ctrl+,`, pesquise `tess` e preencha `tess.apiKey` e `tess.agentId`
-5. Clique no ícone Tess na barra lateral — está pronto
-
----
-
-## Instalação
-
-### Via Marketplace (recomendado)
-Pesquise `Tess Tis` no painel de extensões do VS Code ou aceda ao [VS Code Marketplace](https://marketplace.visualstudio.com).
-
-### Via VSIX (instalação manual)
-1. Descarregue o ficheiro `.vsix` da [página de releases](https://github.com/Filgueiras/tis-tess/releases)
-2. `Ctrl+Shift+P` → **Extensions: Install from VSIX** → seleccione o ficheiro
-3. `Ctrl+Shift+P` → **Developer: Reload Window**
-
-> **Nota:** Evite usar `code --install-extension` no terminal enquanto o VS Code está aberto — deixa a extensão num estado pendente que persiste mesmo após recarregar.
+Extensão para VS Code que integra os agentes [Tess](https://tess.im) directamente no editor.
+Mantém o contexto do projecto, historial de conversas por workspace e suporte a ferramentas de leitura e escrita de ficheiros.
 
 ---
 
 ## Funcionalidades
 
-### Contexto de projecto automático
-Na primeira mensagem de cada sessão, a estrutura completa do projecto é enviada silenciosamente ao agente. Não precisa de explicar onde estão os ficheiros — o agente já sabe.
+- **Chat com streaming** — respostas em tempo real, directamente no painel lateral
+- **Contexto automático** — o ficheiro activo (ou selecção) é incluído em cada mensagem
+- **Árvore do projecto** — injectada automaticamente na primeira mensagem de cada sessão
+- **Histórico por workspace** — cada projecto tem as suas próprias conversas, sem misturar contexto
+- **Apagar e renomear sessões** — gestão de conversas directamente no drawer de histórico
+- **Tabelas e Markdown** — cabeçalhos, listas, checkboxes, blocos de código, tabelas e links renderizados
+- **Botão Guardar** — guarda qualquer bloco de código directamente para um ficheiro
+- **Medidor de contexto** — mostra os tokens consumidos em tempo real
+- **Múltiplos modelos** — selecção do modelo directamente no painel
+- **Tool calling** — o agente pode ler e escrever ficheiros do projecto com confirmação antes de executar
 
-### Ficheiros a pedido
-Clique em **📁 Adicionar ficheiros** para abrir o selector nativo do VS Code e incluir qualquer ficheiro do projecto no contexto — sem precisar de o ter aberto no editor.
+---
 
-### Sessões persistentes
-A conversa é guardada automaticamente por projecto. Feche e reabra o VS Code quando quiser — a sessão retoma exactamente onde ficou.
+## Instalação
 
-### Medidor de contexto
-Uma barra de progresso discreta mostra a percentagem do contexto utilizado em tempo real. Muda de cor conforme o limite se aproxima (verde → amarelo → vermelho) para saber exactamente quando recomeçar uma nova conversa.
+1. Abra o VS Code
+2. `Ctrl+Shift+X` → pesquise `Tess Tis`
+3. Clique em **Install**
 
-### Modelos dinâmicos
-A extensão consulta o agente configurado e apresenta apenas os modelos que esse agente permite. Se o agente estiver bloqueado num único modelo, o selector desaparece — sem opções fictícias.
+Ou instale manualmente a partir de um ficheiro `.vsix`:
 
-### Streaming em tempo real
-As respostas chegam progressivamente, tal como no ChatGPT ou Claude.ai. Pode parar uma resposta a qualquer momento.
-
-### Menu de contexto no editor
-Clique direito em qualquer ficheiro → **Tess: Chat com Código Actual** para abrir o chat com o código seleccionado já incluído.
 
 ---
 
 ## Configuração
 
-### 1. Criar um token na Tess
+A extensão precisa de dois valores para funcionar:
 
-Aceda a [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens) e crie um token de API. Guarde-o — só é mostrado uma vez.
+| Definição | O que preencher |
+|---|---|
+| `tess.apiKey` | Token criado em [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens) |
+| `tess.agentId` | Número no URL do agente — `tess.im/dashboard/agents/12345/edit` |
 
-### 2. Criar um agente Chat
+`Ctrl+,` → pesquise `tess` → preencha os dois campos.
 
-1. Em [tess.im](https://tess.im), crie um agente do tipo **Chat**
-2. Abra o agente criado — o URL terá o formato:
-   ```
-   https://tess.im/dashboard/agents/12345/edit
-   ```
-3. O **Agent ID** é o número no URL (`12345`)
-
-### 3. Configurar a extensão
-
-`Ctrl+,` → pesquise `tess`:
-
-| Definição      | O que preencher                      |
-|----------------|--------------------------------------|
-| `tess.apiKey`  | O token criado no passo 1            |
-| `tess.agentId` | O número do URL do agente (passo 2)  |
-
-> **Nota:** estas definições são globais — configuradas uma vez, ficam disponíveis em todos os workspaces.
-
-Após guardar as definições, a extensão detecta automaticamente os modelos disponíveis no agente.
+As definições têm âmbito global — são configuradas uma única vez e ficam disponíveis em todos os workspaces.
 
 ---
 
-## Interface
+## Modelos disponíveis
 
-```
-┌─────────────────────────────────────────────────┐
-│  Tess Tis                                       │
-│  Modelo: [Claude Sonnet 4.5 ▾]       [Limpar]   │
-├─────────────────────────────────────────────────┤
-│                                                 │
-│                      Você:                      │
-│         o que faz a função processData?   ───►  │
-│                                                 │
-│  ◄───  Tess AI:                                 │
-│        A função recebe um array de objectos     │
-│        e aplica três transformações...          │
-│                                                 │
-│                      Você:                      │
-│         e se o array vier vazio?          ───►  │
-│                                                 │
-│  ◄───  Tess AI:                                 │
-│        Nesse caso retorna imediatamente...      │
-│                                                 │
-├─────────────────────────────────────────────────┤
-│  [ Adicionar ficheiros ]                        │
-│  [Escreva aqui...                  ] [Enviar]   │
-│  ████████████░░░░░░░░  ~24K / 200K tok          │
-└─────────────────────────────────────────────────┘
-```
+| Modelo | Melhor para |
+|---|---|
+| **Auto** | Deixar o agente Tess decidir |
+| **Tess 5** | Tarefas gerais, mais económico |
+| **Claude Opus 4.5** | Raciocínio complexo, arquitectura |
+| **Claude Sonnet 4.5** | Equilíbrio entre qualidade e velocidade |
+| **Claude Haiku 4.5** | Respostas rápidas, tarefas simples |
+| **GPT-4o / GPT-4.1** | Alternativa OpenAI |
+| **Gemini 2.5 Pro** | Contextos muito longos |
+| **Gemini 2.0 Flash** | Velocidade máxima |
 
 ---
 
-## Modelos suportados
+## Utilização
 
-Os modelos disponíveis dependem da configuração do agente Tess ligado. A extensão detecta-os automaticamente.
+### Conversar
 
-| Fornecedor    | Modelos                           |
-|---------------|-----------------------------------|
-| **Tess**      | Tess 5 (modelo próprio)           |
-| **Anthropic** | Claude Opus, Sonnet e Haiku 4.5   |
-| **OpenAI**    | GPT-4o, GPT-4.1                   |
-| **Google**    | Gemini 2.5 Pro, Gemini 2.0 Flash  |
+1. Escreva a pergunta na caixa de texto no fundo do painel
+2. Prima `Enter` ou clique em **Enviar**
+3. Para parar uma resposta a meio, clique em **Parar**
 
----
+### Adicionar ficheiros
 
-## Requisitos
+Clique em **📎 Adicionar ficheiros** para incluir o conteúdo de ficheiros que não estão abertos no editor.
 
-- VS Code 1.60 ou superior
-- Conta em [tess.im](https://tess.im) com um agente Chat criado
-- Token de API da Tess
+### Contexto do projecto
+
+Clique em **🗂️ Contexto do projecto** para injectar manualmente a árvore de ficheiros do workspace.
+
+### Histórico
+
+Clique em **Histórico** para abrir o drawer de conversas do workspace actual.
+Em cada sessão, clique em **···** para renomear ou apagar.
+
+### Menu de contexto no editor
+
+Clique com o botão direito em qualquer ficheiro ou selecção → **Tis: Chat com Código Actual**
 
 ---
 
 ## Resolução de problemas
 
-| Problema | Causa provável | Solução |
+| Sintoma | Causa | Solução |
 |---|---|---|
-| Token não aceite | Token expirado ou copiado incorrectamente | Gere um novo token em tess.im/dashboard/user/tokens |
-| Modelos não aparecem | `agentId` incorrecto | Confirme o número no URL do agente |
-| Ícone de reload persistente | Extensão instalada via terminal com VS Code aberto | Use sempre a UI: `Extensions: Install from VSIX` |
-| Contexto não enviado | Workspace sem ficheiros abertos | Abra uma pasta com `File → Open Folder` |
-| Resposta vazia | Limite de contexto atingido | Inicie uma nova sessão com `[Limpar]` |
+| Painel bloqueado com aviso de configuração | `tess.apiKey` ou `tess.agentId` não preenchidos | `Ctrl+,` → pesquise `tess` |
+| Selector de modelo mostra "Padrão do agente" (desactivado) | Agente com modelo fixo | Normal — o agente usa um modelo fixo, não expõe escolha |
+| Resposta parou a meio | Timeout ou erro de rede | Clique **Parar** e tente novamente |
+| Painel não aparece na barra lateral | Vista oculta | `View → Open View… → Tess Chat` |
 
 ---
 
-## Sobre a TIS Angola
+## Requisitos
 
-**TIS Angola** é uma consultoria angolana de tecnologia e inovação, dedicada a levar ferramentas de desenvolvimento modernas às equipas de software em Angola e na lusofonia.
-
-Esta extensão nasceu do nosso compromisso com o **Manifesto Hypercoding** — a convicção de que a IA deve amplificar a capacidade dos programadores, não substituir o pensamento crítico. Conheça o manifesto em [hypercoding.io](https://hypercoding.io).
-
-- Site: [tis.ao](https://tis.ao)
-- Autor: Marco Guimarães
-- Versão: 2.1.0 · Lançamento: Março 2026
+- VS Code 1.80 ou superior
+- Conta em [tess.im](https://tess.im) com um agente do tipo **Chat** configurado
 
 ---
 
-*Publisher: `tis-angola` · ID: `tis-angola.tis-tess`*
+## Versão
+
+2.5.0 · [TIS Angola](https://tis.ao)

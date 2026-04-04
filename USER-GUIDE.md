@@ -1,6 +1,6 @@
 # Guia do Utilizador — Tess Tis
 
-> Como instalar, configurar e tirar o máximo partido da extensão no dia-a-dia.
+Como instalar, configurar e tirar o máximo partido da extensão no dia-a-dia.
 
 ---
 
@@ -33,7 +33,6 @@ Ou instale manualmente a partir de um ficheiro `.vsix`:
 Extensions (Ctrl+Shift+X) → ··· → Install from VSIX…
 ```
 
----
 
 ## 2. Configuração inicial
 
@@ -103,16 +102,18 @@ Modelo: [Claude Sonnet 4.5 ▾]
 
 ### Quando usar cada modelo
 
-| Modelo | Melhor para |
-|--------|-------------|
-| **Auto** | Deixar o agente Tess decidir o mais adequado |
-| **Tess 5** | Tarefas gerais, mais económico |
-| **Claude Opus 4.5** | Raciocínio complexo, arquitectura, revisão profunda |
-| **Claude Sonnet 4.5** | Equilíbrio entre qualidade e velocidade |
-| **Claude Haiku 4.5** | Respostas rápidas, tarefas simples |
-| **GPT-4o / GPT-4.1** | Alternativa OpenAI |
-| **Gemini 2.5 Pro** | Contextos muito longos |
-| **Gemini 2.0 Flash** | Velocidade máxima |
+--------------------------------------------------------------------------------
+| Modelo                 | Melhor para                                         |
+|------------------------|-----------------------------------------------------|
+| **Auto**               | Deixar o agente Tess decidir o mais adequado        |
+| **Tess 5**             | Tarefas gerais, mais económico                      |
+| **Claude Opus 4.5**    | Raciocínio complexo, arquitectura, revisão profunda |
+| **Claude Sonnet 4.5**  | Equilíbrio entre qualidade e velocidade             |
+| **Claude Haiku 4.5**   | Respostas rápidas, tarefas simples                  |
+| **GPT-4o / GPT-4.1**   | Alternativa OpenAI                                  |
+| **Gemini 2.5 Pro**     | Contextos muito longos                              |
+| **Gemini 2.0 Flash**   | Velocidade máxima                                   |
+--------------------------------------------------------------------------------
 
 ---
 
@@ -135,7 +136,7 @@ A extensão enriquece cada mensagem com contexto do seu projecto, de forma silen
 
 Na **primeira mensagem** de cada sessão, é injectada automaticamente a lista de todos os ficheiros do projecto (até 300), excluindo pastas como `node_modules`, `.git` e `dist`.
 
-O agente fica a saber a estrutura do projecto sem que precise de a descrever. Mas você sempre pode enviar a árvore do projecto para seu agente através do botão "Contexto do projecto".
+O agente fica a saber a estrutura do projecto sem que precise de a descrever. Pode também enviar a árvore manualmente a qualquer momento através do botão **🗂️ Contexto do projecto**.
 
 ### Código do editor activo (todas as mensagens)
 
@@ -151,11 +152,6 @@ Isto significa que pode perguntar directamente "o que faz esta função?" sem pr
 ## 7. Adicionar ficheiros manualmente
 
 O botão **📁 Adicionar ficheiros** serve para incluir o **conteúdo completo** de ficheiros que não estão abertos no editor.
-Ele não cria na sua pasta, mas sempre pode ler seus documentos se tu o indicar qual (a pasta do projecto ele já conhecerá automaticamente).
-Isso é o equivalente a dar a permissão para que ele veja os teuis documentos.
-Nota: o agente cria novos documentos, mas gera links para download que você pode clicar e copiar o conteúdo.
-Isso nós vamos deixar mais dinâmico nas próximas versões, mas como POC achamos o suficiente (lembre do manifesto hypercoding: se a IA
-fizer um monte de coisas e não tiveres contexto, só ela quem sabnerá como funciona teu projecto).
 
 ### Quando usar
 
@@ -185,7 +181,7 @@ Na base do painel existe uma barra de progresso que mostra o contexto consumido:
 - **Amarelo** — a aproximar-se do limite, considere condensar ou perguntar o essencial
 - **Vermelho** — limite próximo, recomenda-se começar uma nova conversa (botão **Limpar**)
 
-O valor exibido é uma estimativa baseada no histórico da conversa e nos ficheiros incluídos.
+O valor exibido é uma estimativa baseada no histórico da conversa e nos ficheiros incluídos. Quando disponível, usa os tokens reais reportados pela API.
 
 ---
 
@@ -197,15 +193,38 @@ A conversa é guardada automaticamente por projecto (workspace). Ao fechar e rea
 - O modelo seleccionado é mantido
 - O medidor de contexto reflecte o estado anterior
 
-Cada workspace tem a sua própria sessão independente — abrir um projecto diferente inicia uma conversa separada. As credenciais (`tess.apiKey` e `tess.agentId`), porém, são globais e partilhadas entre todos os workspaces.
+Cada workspace tem a sua própria sessão independente — abrir um projecto diferente retoma a conversa desse projecto, sem misturar contexto entre projectos. As credenciais (`tess.apiKey` e `tess.agentId`), porém, são globais e partilhadas entre todos os workspaces.
+
+---
+## 10. Histórico de conversas
+
+Clique no botão **Histórico** no topo do painel para abrir o drawer de conversas do workspace actual.
+
+O histórico mostra apenas as conversas do projecto aberto — cada workspace tem o seu próprio histórico isolado.
+
+### Gerir conversas
+
+Em cada sessão no drawer, clique em **···** para aceder às opções:
+_______________________________________________________
+| Acção         | Comportamento                       |
+|---------------|-------------------------------------|
+| **Renomear**  | O título torna-se editável inline — |
+|               | confirme com `Enter` ou cancele com |
+|               | `Escape`.                           |
+|---------------|-------------------------------------|
+| **Apagar**    | Pede confirmação antes de apagar —  |
+|               | a acção é irreversível              |
+-------------------------------------------------------
+
+Clique directamente no título da sessão para a carregar no painel.
 
 ---
 
-## 10. Atalhos e menu de contexto
+## 11. Atalhos e menu de contexto
 
 ### Menu de contexto no editor
 
-Clique com o botão direito em qualquer ficheiro ou selecção de código → **Tess: Chat com Código Actual**
+Clique com o botão direito em qualquer ficheiro ou selecção de código → **Tis: Chat com Código Actual**
 
 - Se tiver texto seleccionado, apenas a selecção é incluída no contexto
 - Se não houver selecção, o ficheiro completo é usado
@@ -220,16 +239,28 @@ Pode configurar um atalho personalizado para abrir o painel:
 ---
 
 ## Resolução de problemas
-
-| Sintoma | Causa provável | Solução |
-|---------|---------------|---------|
-| Painel mostra aviso de configuração e inputs bloqueados | `tess.apiKey` ou `tess.agentId` não preenchidos | Clique no ícone ⚙ no topo do painel ou `Ctrl+,` → pesquise `tess` |
-| "API Key não configurada" ao enviar mensagem | `tess.apiKey` vazio | `Ctrl+,` → preencher `tess.apiKey` |
-| "Agent ID não configurado" ao enviar mensagem | `tess.agentId` vazio | `Ctrl+,` → preencher `tess.agentId` |
-| Selector de modelo não aparece | Agente com modelo fixo | Normal — o agente não expõe escolha de modelo |
-| Resposta parou a meio | Timeout ou erro de rede | Clique Cancelar e tente novamente |
-| Painel não aparece na barra lateral | Vista oculta | `View → Open View… → Tess Chat` |
-
+________________________________________________________________________________________
+| Sintoma                    | Causa provável          | Solução                       |
+|----------------------------|-------------------------|-------------------------------|
+| Painel mostra aviso de     | `tess.apiKey` ou        | `Ctrl+,` → pesquise `tess`    |
+| configuração e inputs      | `tess.agentId` não      |  e preencha os dois campos    |
+| bloqueados                 |  preenchidos            |                               |
+|--------------------------------------------------------------------------------------|
+| "API Key não configurada"  | `tess.apiKey`           | vazio                         |
+| ao enviar mensagem         |  `Ctrl+,`               | → preencher `tess.apiKey`     |
+|--------------------------------------------------------------------------------------|
+| "Agent ID não configurado" | `tess.agentId`          | vazio                         |
+| ao enviar mensagem         |  `Ctrl+,`               ! → preencher `tess.agentId`    |
+|--------------------------------------------------------------------------------------|
+| Selector de modelo não     | Agente com modelo fixo  ! Normal — o agente não expõe   |
+! aparece                    |                         | escolha de modelo             |
+|--------------------------------------------------------------------------------------|
+| Resposta parou a meio      | Timeout ou erro de rede | Clique Cancelar e tente       |
+!                            |                         | novamente                     |
+|--------------------------------------------------------------------------------------|
+| Painel não aparece na      | Vista oculta            | `View → Open View…` →         |
+| barra lateral              |                         | `Tess Chat`                   |
+|--------------------------------------------------------------------------------------|
 ---
 
-*Guia do utilizador para a versão 2.1.0 da extensão Tess Tis · [TIS Angola](https://tis.ao)*
+*Guia do utilizador para a versão 2.5.0 da extensão Tess Tis · [TIS Angola](https://tis.ao)*

@@ -1,4 +1,4 @@
-# Guia de Build — Tess Tis
+# Guia de Build — Tis Tess
 
 ## Visão geral do processo
 

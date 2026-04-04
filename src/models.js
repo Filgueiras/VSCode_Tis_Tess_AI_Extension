@@ -83,18 +83,21 @@ async function fetchAgentModels(apiKey, agentId) {
  * @param {string} apiKey
  * @param {string} agentId
  */
-async function syncAgentConfig(view, apiKey, agentId) {
+async function syncAgentConfig(webview, apiKey, agentId) {
     if (!apiKey || !agentId) return;
 
     const models = await fetchAgentModels(apiKey, agentId);
 
-    // null      → agente com modelo fixo, esconde selector
+    // null      → agente com modelo fixo, mostra selector desactivado com "Padrão do agente"
     // array     → modelos disponíveis para este agente
     // undefined → erro de rede, usa lista estática para não bloquear a interface
-    view.webview.postMessage({
-        type: 'setModels',
-        models: models !== undefined ? models : MODELS
-    });
+    const fixed = models === null;
+    let modelList;
+    if (fixed)                 modelList = [{ id: 'auto', label: 'Padrão do agente' }];
+    else if (models === undefined) modelList = MODELS;
+    else                       modelList = models;
+
+    webview.postMessage({ type: 'setModels', models: modelList, fixed });
 }
 
 // ─── Exports ───────────────────────────────────────────────────────────────────

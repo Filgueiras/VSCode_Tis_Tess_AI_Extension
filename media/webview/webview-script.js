@@ -26,7 +26,6 @@ let waiting           = false;
 let actualTokens      = null;
 let configured        = false;
 let historyDrawerOpen = false;
-let toolQueue         = [];   // fila sequencial de tool calls pendentes
 
 // ─── Drawer de Histórico ─────────────────────────────────────────────────────
 
@@ -852,19 +851,14 @@ function finalizeAssistant() {
             assistantBubble = null;
             setWaiting(false);
 
-            // Carrega a fila com todos os tools e mostra notificação para cada um
-            toolQueue = toolMatches.map(match => ({
-                tool:    match[1],
-                args:    match[2] ?? null,
-                content: (match[1] === 'write_file' || match[1] === 'edit_file')
+            for (const match of toolMatches) {
+                const tool    = match[1];
+                const args    = match[2] ?? null;
+                const content = (tool === 'write_file' || tool === 'edit_file')
                     ? _extractLastCodeBlock(rawText, match.index)
-                    : null
-            }));
-
-            for (const t of toolQueue) appendToolNotice(t.tool, t.args);
-
-            // Dispara apenas o primeiro — o resto processa sequencialmente em toolResult
-            _fireNextTool();
+                    : null;
+                vscode.postMessage({ type: 'toolCall', tool, args, content });
+            }
             return;
         }
 
@@ -887,14 +881,6 @@ function finalizeAssistant() {
         setWaiting(false);
         updateContextMeter();
     }
-}
-
-// ─── Fila sequencial de tool calls ───────────────────────────────────────────
-
-function _fireNextTool() {
-    if (toolQueue.length === 0) return;
-    const next = toolQueue.shift();
-    vscode.postMessage({ type: 'toolCall', tool: next.tool, args: next.args, content: next.content });
 }
 
 // ─── Estado do input ─────────────────────────────────────────────────────────
@@ -969,7 +955,6 @@ clearBtn.addEventListener('click', () => {
     history         = [];
     actualTokens    = null;
     assistantBubble = null;
-    toolQueue       = [];
     [...messagesEl.children].forEach(el => { if (el.id !== 'watermark') el.remove(); });
     const emptyDiv = document.createElement('div');
     emptyDiv.id = 'empty';
@@ -1019,26 +1004,23 @@ window.addEventListener('message', ({ data }) => {
             setWaiting(false);
             break;
 
+        case 'toolCall':
+            appendToolNotice(data.tool, data.args);
+            break;
+
         case 'toolResult': {
             const toolContent = '[Resultado da ferramenta ' + data.tool
                 + (data.args ? ': ' + data.args : '') + ']\n\n' + data.result;
             history.push({ role: 'user', content: toolContent });
-
-            if (toolQueue.length > 0) {
-                // Ainda há tools na fila — dispara o próximo sem fazer API call
-                _fireNextTool();
-            } else {
-                // Todos os resultados recolhidos — agora sim, chamada à API
-                setWaiting(true);
-                beginAssistantBubble();
-                vscode.postMessage({
-                    type:     'send',
-                    userText: toolContent,
-                    model:    modelSelect.value,
-                    history:  history.slice(0, -1),
-                    isTool:   true
-                });
-            }
+            setWaiting(true);
+            beginAssistantBubble();
+            vscode.postMessage({
+                type:     'send',
+                userText: toolContent,
+                model:    modelSelect.value,
+                history:  history.slice(0, -1),
+                isTool:   true
+            });
             break;
         }
 

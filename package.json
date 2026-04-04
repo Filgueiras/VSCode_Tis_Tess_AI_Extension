@@ -2,7 +2,7 @@
   "name": "tis-tess",
   "displayName": "Tis.ai - Powered by Tess",
   "description": "Assistente de código com IA para VS Code — powered by TIS to use Tess.im",
-  "version": "2.5.2",
+  "version": "2.6.0",
   "publisher": "tis-angola",
   "author": {
     "name": "Marco A. F. Guimarães",
@@ -94,11 +94,11 @@
     }
   },
   "scripts": {
-    "clean": "node -e \"require('fs').rmSync('dist', {recursive:true,force:true}); require('fs').rmSync('media', {recursive:true,force:true});\"",
+    "clean": "node -e \"require('fs').rmSync('dist', {recursive:true,force:true}); require('fs').rmSync('media', {recursive:true,force:true}); require('fs').readdirSync('.').filter(f=>f.endsWith('.vsix')).forEach(f=>require('fs').rmSync(f));\"",
     "copy-assets": "copyfiles -u 1 src/webview/webview.css src/webview/webview-script.js media",
     "build": "npm run copy-assets && esbuild extension.js --bundle --outfile=dist/extension.js --external:vscode --platform=node --target=node18",
     "package": "npm run build && npx vsce package",
-    "install-ext": "npm run clean && npm run package && code --install-extension tis-tess-*.vsix --force"
+    "install-ext": "npm run clean && npm run package && bash -c 'code --install-extension tis-tess-*.vsix --force'"
   },
   "dependencies": {
     "axios": "^1.6.0"

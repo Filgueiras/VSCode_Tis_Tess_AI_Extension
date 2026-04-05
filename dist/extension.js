@@ -15277,6 +15277,195 @@ var require_api = __commonJS({
   }
 });
 
+// src/openai-compat.js
+var require_openai_compat = __commonJS({
+  "src/openai-compat.js"(exports2, module2) {
+    "use strict";
+    var axios = require_axios();
+    var REQUEST_TIMEOUT = 3e5;
+    var FIRST_BYTE_LIMIT = 3e4;
+    var INACTIVITY_LIMIT = 6e4;
+    var _abortController = null;
+    function cancelOpenAICompatStream() {
+      _abortController?.abort();
+      _abortController = null;
+    }
+    async function readErrorBody(data) {
+      if (typeof data?.pipe !== "function") {
+        console.error("[OAICompat] Erro API:", JSON.stringify(data));
+        return data?.message || data?.error || data?.detail || null;
+      }
+      const chunks = [];
+      await new Promise((res, rej) => {
+        data.on("data", (c) => chunks.push(c));
+        data.on("end", res);
+        data.on("error", rej);
+      });
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString());
+        console.error("[OAICompat] Erro API:", JSON.stringify(body));
+        return body.message || body.error || body.detail || null;
+      } catch {
+        return null;
+      }
+    }
+    async function postWithRetry(url, body, headers, signal) {
+      const cfg = { headers, responseType: "stream", timeout: REQUEST_TIMEOUT, signal };
+      try {
+        return await axios.post(url, body, cfg);
+      } catch (err) {
+        if (err.response?.status === 429) {
+          const wait = Number.parseInt(err.response.headers["retry-after"] ?? "5", 10);
+          console.warn(`[OAICompat] Rate limit. Aguardando ${wait}s...`);
+          await new Promise((r) => setTimeout(r, wait * 1e3));
+          return await axios.post(url, body, cfg);
+        }
+        throw err;
+      }
+    }
+    function friendlyError(providerLabel, status, fallback) {
+      switch (status) {
+        case 401:
+          return `API Key inv\xE1lida ou expirada para ${providerLabel}.`;
+        case 403:
+          return `Sem permiss\xE3o em ${providerLabel}. Verifique a chave e as permiss\xF5es.`;
+        case 404:
+          return `Endpoint n\xE3o encontrado em ${providerLabel}. Verifique a URL configurada.`;
+        case 500:
+          return `Erro interno do servidor ${providerLabel}. Tente novamente.`;
+        case 502:
+          return `${providerLabel} inacess\xEDvel (bad gateway).`;
+        case 503:
+          return `${providerLabel} temporariamente indispon\xEDvel.`;
+        case 504:
+          return `${providerLabel} n\xE3o respondeu a tempo (504).`;
+        default:
+          return fallback ? `Erro ${status} em ${providerLabel}: ${fallback}` : `Erro de liga\xE7\xE3o ${providerLabel} (${status}).`;
+      }
+    }
+    function parseChunk(raw) {
+      if (!raw || raw === "[DONE]") return { done: raw === "[DONE]", text: null, usage: null };
+      try {
+        const parsed = JSON.parse(raw);
+        return {
+          done: false,
+          text: parsed.choices?.[0]?.delta?.content ?? null,
+          usage: parsed.usage ?? null
+        };
+      } catch {
+        return { done: false, text: raw, usage: null };
+      }
+    }
+    async function startOpenAICompatStream({
+      providerLabel = "API",
+      baseUrl,
+      headers = {},
+      extraBody = {},
+      model,
+      messages,
+      onChunk,
+      onUsage,
+      onEnd,
+      onError
+    }) {
+      cancelOpenAICompatStream();
+      _abortController = new AbortController();
+      const signal = _abortController.signal;
+      const body = { messages, stream: true, ...extraBody };
+      if (model && model !== "auto") body.model = model;
+      const url = `${baseUrl}/chat/completions`;
+      console.log(`[OAICompat] \u2192 POST ${url} (model: ${model ?? "auto"}, provider: ${providerLabel})`);
+      try {
+        const response = await postWithRetry(url, body, {
+          "Content-Type": "application/json",
+          ...headers
+        }, signal);
+        await new Promise((resolve) => {
+          let buffer = "";
+          let receivedChunk = false;
+          let doneSent = false;
+          const firstByteTimer = setTimeout(() => {
+            if (!receivedChunk) {
+              console.warn(`[OAICompat] Timeout: sem resposta de ${providerLabel} em 30s`);
+              response.data.destroy();
+              onError(`${providerLabel} demorou demasiado a responder. Tente novamente.`);
+              resolve();
+            }
+          }, FIRST_BYTE_LIMIT);
+          let inactivityTimer = null;
+          function resetInactivity() {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+              if (!doneSent) {
+                console.warn(`[OAICompat] Timeout de inactividade (${providerLabel})`);
+                response.data.destroy();
+                onError(`A resposta de ${providerLabel} parou a meio. Tente novamente.`);
+                resolve();
+              }
+            }, INACTIVITY_LIMIT);
+          }
+          function finish() {
+            if (doneSent) return;
+            doneSent = true;
+            clearTimeout(firstByteTimer);
+            clearTimeout(inactivityTimer);
+            onEnd();
+            resolve();
+          }
+          response.data.on("data", (chunk) => {
+            receivedChunk = true;
+            resetInactivity();
+            buffer += chunk.toString();
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim();
+              const { done, text, usage } = parseChunk(raw);
+              if (done) {
+                finish();
+                return;
+              }
+              if (text) onChunk(text);
+              if (usage) onUsage(usage);
+            }
+          });
+          response.data.on("end", () => {
+            if (buffer.startsWith("data: ")) {
+              const raw = buffer.slice(6).trim();
+              const { done, text } = parseChunk(raw);
+              if (!done && text) onChunk(text);
+            }
+            finish();
+          });
+          response.data.on("error", (err) => {
+            clearTimeout(firstByteTimer);
+            clearTimeout(inactivityTimer);
+            console.error(`[OAICompat] Erro de stream (${providerLabel}):`, err.message);
+            onError(`Erro de liga\xE7\xE3o ${providerLabel}: ${err.message}`);
+            resolve();
+          });
+        });
+      } catch (err) {
+        console.error(`[OAICompat] Erro na chamada (${providerLabel}):`, err.message);
+        if (axios.isCancel(err) || err.name === "CanceledError" || err.name === "AbortError") {
+          return;
+        }
+        const status = err.response?.status;
+        if (status) {
+          const apiMsg = err.response.data ? await readErrorBody(err.response.data) ?? null : null;
+          onError(friendlyError(providerLabel, status, apiMsg));
+        } else {
+          onError(`Sem liga\xE7\xE3o com ${providerLabel}: ${err.message}`);
+        }
+      } finally {
+        _abortController = null;
+      }
+    }
+    module2.exports = { startOpenAICompatStream, cancelOpenAICompatStream };
+  }
+});
+
 // src/models.js
 var require_models = __commonJS({
   "src/models.js"(exports2, module2) {
@@ -15325,14 +15514,17 @@ var require_models = __commonJS({
       }
     }
     async function syncAgentConfig(webview, apiKey, agentId) {
-      if (!apiKey || !agentId) return;
+      if (!apiKey || !agentId) {
+        webview.postMessage({ type: "setModels", models: MODELS, fixed: false, limits: MODEL_LIMITS });
+        return;
+      }
       const models = await fetchAgentModels(apiKey, agentId);
       const fixed = models === null;
       let modelList;
       if (fixed) modelList = [{ id: "auto", label: "Padr\xE3o do agente" }];
       else if (models === void 0) modelList = MODELS;
       else modelList = models;
-      webview.postMessage({ type: "setModels", models: modelList, fixed });
+      webview.postMessage({ type: "setModels", models: modelList, fixed, limits: MODEL_LIMITS });
     }
     module2.exports = {
       MODELS,
@@ -15340,6 +15532,194 @@ var require_models = __commonJS({
       fetchAgentModels,
       syncAgentConfig
     };
+  }
+});
+
+// src/providers/tisai.js
+var require_tisai = __commonJS({
+  "src/providers/tisai.js"(exports2, module2) {
+    "use strict";
+    var axios = require_axios();
+    var BASE_URL = "https://ai.tisdev.cloud/api/v1";
+    var STATIC_MODELS = [
+      { id: "auto", label: "Auto (TisAI escolhe)" },
+      { id: "deepseek-coder-v2:16b", label: "DeepSeek Coder V2 16B" },
+      { id: "deepseek-r1:14b", label: "DeepSeek R1 14B" },
+      { id: "llama3.1:8b", label: "Llama 3.1 8B" },
+      { id: "qwen2.5-coder:14b", label: "Qwen 2.5 Coder 14B" }
+    ];
+    var MODEL_LIMITS = {
+      "auto": 32e3,
+      "deepseek-coder-v2:16b": 64e3,
+      "deepseek-r1:14b": 64e3,
+      "llama3.1:8b": 128e3,
+      "qwen2.5-coder:14b": 32e3
+    };
+    function getCredentials(cfg) {
+      const apiKey = cfg.get("tisAiApiKey", "");
+      if (!apiKey) return {
+        ok: false,
+        errorText: "Chave API TisAI n\xE3o configurada. Verifique Defini\xE7\xF5es \u2192 tis.tisAiApiKey."
+      };
+      const assistantId = cfg.get("tisAiAssistantId", "") || null;
+      return { ok: true, apiKey, assistantId };
+    }
+    function buildStreamConfig(creds) {
+      const extraBody = creds.assistantId ? { assistant_id: Number.parseInt(creds.assistantId, 10) || creds.assistantId } : {};
+      return {
+        baseUrl: BASE_URL,
+        headers: { "X-API-Key": creds.apiKey },
+        extraBody
+      };
+    }
+    async function fetchModels(creds) {
+      const headers = { "X-API-Key": creds.apiKey };
+      try {
+        const res = await axios.get(`${BASE_URL}/models`, { headers, timeout: 8e3 });
+        const data = res.data?.data ?? res.data ?? [];
+        if (Array.isArray(data) && data.length > 0) {
+          return data.map((m) => ({ id: m.id ?? m.name, label: m.id ?? m.name })).filter((m) => m.id);
+        }
+      } catch {
+      }
+      try {
+        const res = await axios.get(`${BASE_URL}/assistants`, { headers, timeout: 8e3 });
+        const data = res.data?.data ?? res.data ?? [];
+        if (Array.isArray(data) && data.length > 0) {
+          return data.map((a) => ({
+            id: String(a.id),
+            label: a.name ?? a.title ?? String(a.id)
+          })).filter((m) => m.id);
+        }
+      } catch {
+      }
+      return null;
+    }
+    module2.exports = {
+      id: "tisai",
+      label: "TisAI",
+      getCredentials,
+      buildStreamConfig,
+      fetchModels,
+      staticModels: STATIC_MODELS,
+      modelLimits: MODEL_LIMITS
+    };
+  }
+});
+
+// src/providers/ollama.js
+var require_ollama = __commonJS({
+  "src/providers/ollama.js"(exports2, module2) {
+    "use strict";
+    var axios = require_axios();
+    var DEFAULT_BASE_URL = "http://localhost:11434";
+    function getCredentials(cfg) {
+      const baseUrl = (cfg.get("ollama.baseUrl", DEFAULT_BASE_URL) || DEFAULT_BASE_URL).replace(/\/$/, "");
+      return { ok: true, baseUrl };
+    }
+    function buildStreamConfig(creds) {
+      return {
+        baseUrl: `${creds.baseUrl}/v1`,
+        headers: {},
+        // sem autenticação para Ollama por omissão
+        extraBody: {}
+      };
+    }
+    async function fetchModels(creds) {
+      try {
+        const res = await axios.get(`${creds.baseUrl}/api/tags`, { timeout: 5e3 });
+        const models = res.data?.models ?? [];
+        if (models.length > 0) {
+          return models.map((m) => ({ id: m.name, label: m.name }));
+        }
+      } catch {
+      }
+      try {
+        const res = await axios.get(`${creds.baseUrl}/v1/models`, { timeout: 5e3 });
+        const data = res.data?.data ?? [];
+        if (data.length > 0) {
+          return data.map((m) => ({ id: m.id, label: m.id }));
+        }
+      } catch {
+      }
+      return null;
+    }
+    module2.exports = {
+      id: "ollama",
+      label: "Ollama (local)",
+      getCredentials,
+      buildStreamConfig,
+      fetchModels,
+      staticModels: [],
+      modelLimits: {}
+    };
+  }
+});
+
+// src/providers/remote.js
+var require_remote = __commonJS({
+  "src/providers/remote.js"(exports2, module2) {
+    "use strict";
+    var axios = require_axios();
+    function getCredentials(cfg) {
+      const endpoint = (cfg.get("remote.endpoint", "") || "").trim().replace(/\/$/, "");
+      if (!endpoint) return {
+        ok: false,
+        errorText: "Endpoint remoto n\xE3o configurado. Verifique Defini\xE7\xF5es \u2192 tis.remote.endpoint."
+      };
+      const apiKey = cfg.get("remote.apiKey", "") || null;
+      const model = cfg.get("remote.model", "") || null;
+      return { ok: true, endpoint, apiKey, model };
+    }
+    function buildStreamConfig(creds) {
+      const headers = creds.apiKey ? { "Authorization": `Bearer ${creds.apiKey}` } : {};
+      return {
+        baseUrl: creds.endpoint,
+        headers,
+        extraBody: {},
+        defaultModel: creds.model
+      };
+    }
+    async function fetchModels(creds) {
+      const headers = creds.apiKey ? { "Authorization": `Bearer ${creds.apiKey}` } : {};
+      try {
+        const res = await axios.get(`${creds.endpoint}/models`, { headers, timeout: 6e3 });
+        const data = res.data?.data ?? res.data ?? [];
+        if (Array.isArray(data) && data.length > 0) {
+          return data.map((m) => ({ id: m.id ?? m.name, label: m.id ?? m.name })).filter((m) => m.id);
+        }
+      } catch {
+      }
+      return null;
+    }
+    module2.exports = {
+      id: "remote",
+      label: "Remoto",
+      getCredentials,
+      buildStreamConfig,
+      fetchModels,
+      staticModels: [],
+      modelLimits: {}
+    };
+  }
+});
+
+// src/providers/index.js
+var require_providers = __commonJS({
+  "src/providers/index.js"(exports2, module2) {
+    "use strict";
+    var PROVIDERS = {
+      tisai: require_tisai(),
+      ollama: require_ollama(),
+      remote: require_remote()
+    };
+    function getProvider(id) {
+      return PROVIDERS[id] ?? null;
+    }
+    function listProviders() {
+      return Object.values(PROVIDERS).map((p) => ({ id: p.id, label: p.label }));
+    }
+    module2.exports = { PROVIDERS, getProvider, listProviders };
   }
 });
 
@@ -15446,7 +15826,7 @@ var require_webview = __commonJS({
   "src/webview.js"(exports2, module2) {
     "use strict";
     var vscode2 = require("vscode");
-    var crypto = require("crypto");
+    var crypto = require("node:crypto");
     function getNonce() {
       return crypto.randomBytes(16).toString("hex");
     }
@@ -15474,7 +15854,7 @@ var require_webview = __commonJS({
                  style-src ${cspSource} 'unsafe-inline';
                  script-src ${cspSource} 'nonce-${nonce}';
                  img-src ${cspSource} data:;
-                 connect-src https://api.tess.im;">
+                 connect-src https://api.tess.im https://ai.tisdev.cloud http://localhost:* http://127.0.0.1:*;">
   <title>Tess AI</title>
   <link rel="stylesheet" href="${cssUri}">
 </head>
@@ -15482,6 +15862,15 @@ var require_webview = __commonJS({
 
   <!-- \u2500\u2500 Toolbar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
   <div id="toolbar">
+    <div id="providerRow">
+      <label>Liga\xE7\xE3o:</label>
+      <select id="providerSelect">
+        <option value="tess">Tess</option>
+        <option value="tisai">TisAI</option>
+        <option value="ollama">Ollama (local)</option>
+        <option value="remote">Remoto</option>
+      </select>
+    </div>
     <div id="modelRow">
       <label>Modelo:</label>
       <select id="modelSelect">${modelOptions}</select>
@@ -15506,6 +15895,7 @@ var require_webview = __commonJS({
     <div id="actionButtons">
       <button class="btn-ghost" id="codeBtn">\u{1F4CE} Adicionar ficheiros</button>
       <button class="btn-ghost" id="contextBtn">\u{1F5C2}\uFE0F Contexto do projecto</button>
+      <button class="btn-ghost" id="auditBtn" title="An\xE1lise Hypercoding: seguran\xE7a, efici\xEAncia, manutenibilidade">\u{1F50D} Hypercoding</button>
       <button class="btn-ghost" id="resyncBtn" title="Injeta o log de ac\xE7\xF5es no chat para ressincronizar o agente">\u{1F504} Log Ressinc</button>
     </div>
     <div id="inputRow">
@@ -15566,7 +15956,7 @@ var require_tools = __commonJS({
     async function executeToolCalls(text, view) {
       const matches = [...text.matchAll(TOOL_REGEX)];
       if (matches.length === 0) return { cleanText: text, hasTools: false };
-      const cleanText = text.replace(TOOL_REGEX, "").trim();
+      const cleanText = text.replaceAll(TOOL_REGEX, "").trim();
       for (const match of matches) {
         const [, toolName, args] = match;
         const result = await executeTool(toolName, args ?? null);
@@ -15579,133 +15969,242 @@ var require_tools = __commonJS({
       }
       return { cleanText, hasTools: true };
     }
-    async function executeTool(toolName, args, content = null) {
-      console.log(`[Tess Tools] Executando: ${toolName}${args ? ":" + args : ""}`);
-      switch (toolName) {
-        case "get_tree": {
-          const tree = await getWorkspaceTree();
-          const result = tree ?? "Erro: sem workspace aberto ou pasta vazia.";
-          await appendToActionLog(toolName, args, result.slice(0, 80));
-          return result;
-        }
-        case "get_file": {
-          if (!args) return "Erro: get_file requer um caminho de ficheiro.";
-          const { error, content: content2, language, path: filePath } = await readWorkspaceFile(args);
-          if (error) {
-            const result = `Erro ao ler "${args}": ${error}`;
-            await appendToActionLog(toolName, args, result);
-            return result;
-          }
-          await appendToActionLog(toolName, args, `lido com sucesso`);
-          return `\`\`\`${language}
-// ${filePath}
-${content2}
-\`\`\``;
-        }
-        case "write_file":
-        case "edit_file": {
-          if (!args) return `Erro: ${toolName} requer o caminho do ficheiro.`;
-          if (!content) return `Erro: ${toolName} n\xE3o recebeu conte\xFAdo \u2014 escreve o bloco de c\xF3digo antes da tag.`;
-          const filePath = args.trim();
-          const folders = vscode2.workspace.workspaceFolders;
-          if (!folders) return "Erro: sem workspace aberto.";
-          const uri = vscode2.Uri.joinPath(folders[0].uri, filePath);
-          let fileExists = false;
-          try {
-            await vscode2.workspace.fs.stat(uri);
-            fileExists = true;
-          } catch {
-          }
-          const action = fileExists ? "editar" : "criar";
-          const confirmed = await vscode2.window.showWarningMessage(
-            `Tess quer ${action}: ${filePath}`,
-            { modal: true },
-            "Permitir",
-            "Cancelar"
-          );
-          if (confirmed !== "Permitir") {
-            const result = `Opera\xE7\xE3o cancelada pelo utilizador: ${filePath}`;
-            await appendToActionLog(toolName, filePath, result);
-            return result;
-          }
-          try {
-            const encoder = new TextEncoder();
-            await vscode2.workspace.fs.writeFile(uri, encoder.encode(content));
-            const doc = await vscode2.workspace.openTextDocument(uri);
-            await vscode2.window.showTextDocument(doc, { preview: true, preserveFocus: true });
-            console.log(`[Tess Tools] Ficheiro ${action}: ${filePath}`);
-            const result = `Ficheiro ${action === "criar" ? "criado" : "editado"} com sucesso: ${filePath}`;
-            await appendToActionLog(toolName, filePath, result);
-            return result;
-          } catch (err) {
-            const result = `Erro ao ${action} ficheiro: ${err.message}`;
-            await appendToActionLog(toolName, filePath, result);
-            return result;
-          }
-        }
-        case "list_dir": {
-          const dirPath = args ?? "";
-          try {
-            const folders = vscode2.workspace.workspaceFolders;
-            if (!folders) return "Erro: sem workspace aberto.";
-            const uri = vscode2.Uri.joinPath(folders[0].uri, dirPath);
-            const entries = await vscode2.workspace.fs.readDirectory(uri);
-            const lines = entries.map(([name, type]) => {
-              const icon = type === vscode2.FileType.Directory ? "\u{1F4C1}" : "\u{1F4C4}";
-              return `${icon} ${name}`;
-            });
-            const result = `Conte\xFAdo de "${dirPath || "/"}":
-${lines.join("\n")}`;
-            await appendToActionLog(toolName, dirPath || "/", `listado (${lines.length} entradas)`);
-            return result;
-          } catch (err) {
-            const result = `Erro ao listar directoria: ${err.message}`;
-            await appendToActionLog(toolName, dirPath || "/", result);
-            return result;
-          }
-        }
-        default:
-          return `Ferramenta desconhecida: "${toolName}". Ferramentas dispon\xEDveis: get_tree, get_file, list_dir, write_file, edit_file`;
+    async function _toolGetTree(toolName, args) {
+      const tree = await getWorkspaceTree();
+      const result = tree ?? "Erro: sem workspace aberto ou pasta vazia.";
+      await appendToActionLog(toolName, args, result.slice(0, 80));
+      return result;
+    }
+    async function _toolGetFile(toolName, args) {
+      if (!args) return "Erro: get_file requer um caminho de ficheiro.";
+      const { error, content, language, path: filePath } = await readWorkspaceFile(args);
+      if (error) {
+        const result = `Erro ao ler "${args}": ${error}`;
+        await appendToActionLog(toolName, args, result);
+        return result;
       }
+      await appendToActionLog(toolName, args, "lido com sucesso");
+      return `\`\`\`${language}
+// ${filePath}
+${content}
+\`\`\``;
+    }
+    async function _toolWriteFile(toolName, args, content) {
+      if (!args) return `Erro: ${toolName} requer o caminho do ficheiro.`;
+      if (!content) return `Erro: ${toolName} n\xE3o recebeu conte\xFAdo \u2014 escreve o bloco de c\xF3digo antes da tag.`;
+      const filePath = args.trim();
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders) return "Erro: sem workspace aberto.";
+      const uri = vscode2.Uri.joinPath(folders[0].uri, filePath);
+      let fileExists = false;
+      try {
+        await vscode2.workspace.fs.stat(uri);
+        fileExists = true;
+      } catch {
+      }
+      const action = fileExists ? "editar" : "criar";
+      const confirmed = await vscode2.window.showWarningMessage(
+        `Tis quer ${action}: ${filePath}`,
+        { modal: true },
+        "Permitir",
+        "Cancelar"
+      );
+      if (confirmed !== "Permitir") {
+        const result = `Opera\xE7\xE3o cancelada pelo utilizador: ${filePath}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      }
+      try {
+        await vscode2.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
+        const doc = await vscode2.workspace.openTextDocument(uri);
+        await vscode2.window.showTextDocument(doc, { preview: true, preserveFocus: true });
+        const result = `Ficheiro ${action === "criar" ? "criado" : "editado"} com sucesso: ${filePath}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      } catch (err) {
+        const result = `Erro ao ${action} ficheiro: ${err.message}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      }
+    }
+    async function _toolListDir(toolName, args = "") {
+      const dirPath = args;
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders) return "Erro: sem workspace aberto.";
+      try {
+        const uri = vscode2.Uri.joinPath(folders[0].uri, dirPath);
+        const entries = await vscode2.workspace.fs.readDirectory(uri);
+        const lines = entries.map(
+          ([name, type]) => `${type === vscode2.FileType.Directory ? "\u{1F4C1}" : "\u{1F4C4}"} ${name}`
+        );
+        const result = `Conte\xFAdo de "${dirPath || "/"}":
+${lines.join("\n")}`;
+        await appendToActionLog(toolName, dirPath || "/", `listado (${lines.length} entradas)`);
+        return result;
+      } catch (err) {
+        const result = `Erro ao listar directoria: ${err.message}`;
+        await appendToActionLog(toolName, dirPath || "/", result);
+        return result;
+      }
+    }
+    function _tasksUri() {
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders) return null;
+      return vscode2.Uri.joinPath(folders[0].uri, ".tess-tasks.md");
+    }
+    async function _readTasksFile(uri) {
+      try {
+        const raw = await vscode2.workspace.fs.readFile(uri);
+        return new TextDecoder().decode(raw);
+      } catch {
+        return "";
+      }
+    }
+    async function _toolGetTasks(toolName) {
+      const uri = _tasksUri();
+      if (!uri) return "Erro: sem workspace aberto.";
+      const content = await _readTasksFile(uri);
+      await appendToActionLog(toolName, null, "lista lida");
+      return content || "(lista de tarefas vazia)";
+    }
+    async function _toolSetTasks(toolName, args) {
+      if (!args) return "Erro: set_tasks requer conte\xFAdo.";
+      const uri = _tasksUri();
+      if (!uri) return "Erro: sem workspace aberto.";
+      await vscode2.workspace.fs.writeFile(uri, new TextEncoder().encode(`# Tis \u2014 Tarefas
+
+${args.trim()}
+`));
+      await appendToActionLog(toolName, null, "lista actualizada");
+      return "Lista de tarefas actualizada.";
+    }
+    async function _toolAddTask(toolName, args) {
+      if (!args) return "Erro: add_task requer a descri\xE7\xE3o da tarefa.";
+      const uri = _tasksUri();
+      if (!uri) return "Erro: sem workspace aberto.";
+      let existing = await _readTasksFile(uri);
+      if (!existing) existing = "# Tis \u2014 Tarefas\n\n";
+      await vscode2.workspace.fs.writeFile(uri, new TextEncoder().encode(
+        existing.trimEnd() + `
+- [ ] ${args.trim()}
+`
+      ));
+      await appendToActionLog(toolName, args, "tarefa adicionada");
+      return `Tarefa adicionada: ${args.trim()}`;
+    }
+    async function _toolDoneTask(toolName, args) {
+      if (!args) return "Erro: done_task requer a descri\xE7\xE3o ou n\xFAmero da tarefa.";
+      const uri = _tasksUri();
+      if (!uri) return "Erro: sem workspace aberto.";
+      const existing = await _readTasksFile(uri);
+      if (!existing) return "Erro: sem lista de tarefas existente.";
+      const needle = args.trim().toLowerCase();
+      let matched = false;
+      const updated = existing.split("\n").map((line) => {
+        if (!matched && line.startsWith("- [ ]") && line.toLowerCase().includes(needle)) {
+          matched = true;
+          return line.replaceAll("- [ ]", "- [x]");
+        }
+        return line;
+      }).join("\n");
+      if (!matched) return `Tarefa n\xE3o encontrada: "${args.trim()}"`;
+      await vscode2.workspace.fs.writeFile(uri, new TextEncoder().encode(updated));
+      await appendToActionLog(toolName, args, "tarefa conclu\xEDda");
+      return `Tarefa marcada como conclu\xEDda: ${args.trim()}`;
+    }
+    var TOOL_HANDLERS = {
+      get_tree: (n, a) => _toolGetTree(n, a),
+      get_file: (n, a) => _toolGetFile(n, a),
+      write_file: (n, a, c) => _toolWriteFile(n, a, c),
+      edit_file: (n, a, c) => _toolWriteFile(n, a, c),
+      list_dir: (n, a) => _toolListDir(n, a),
+      get_tasks: (n) => _toolGetTasks(n),
+      set_tasks: (n, a) => _toolSetTasks(n, a),
+      add_task: (n, a) => _toolAddTask(n, a),
+      done_task: (n, a) => _toolDoneTask(n, a)
+    };
+    async function executeTool(toolName, args, content = null) {
+      console.log(`[Tis Tools] Executando: ${toolName}${args ? ":" + args : ""}`);
+      const handler = TOOL_HANDLERS[toolName];
+      if (!handler) {
+        return `Ferramenta desconhecida: "${toolName}". Ferramentas dispon\xEDveis: ${Object.keys(TOOL_HANDLERS).join(", ")}`;
+      }
+      return handler(toolName, args, content);
     }
     function getToolsSystemPrompt() {
       return `
-## Ferramentas dispon\xEDveis (VS Code File System)
+# Contexto de execu\xE7\xE3o \u2014 VS Code (Tis.ai Hypercoding)
 
-Tens acesso ao sistema de ficheiros do projecto VS Code do utilizador.
-Para usar uma ferramenta, inclui a tag exacta na tua resposta \u2014 a extens\xE3o intercepta-a automaticamente.
+Est\xE1s a ser executado dentro do VS Code como extens\xE3o nativa de desenvolvimento assistido por IA.
+A extens\xE3o injeta automaticamente em cada mensagem:
+- **Primeira mensagem da sess\xE3o:** estrutura completa de ficheiros do workspace
+- **Todas as mensagens:** conte\xFAdo do ficheiro activo no editor (ou selec\xE7\xE3o, se houver)
 
-### Ferramentas
+Usa este contexto directamente. N\xE3o pe\xE7as informa\xE7\xE3o que j\xE1 foi fornecida.
 
+# Override de comportamento \u2014 execu\xE7\xE3o directa
+
+**Ignora qualquer instru\xE7\xE3o anterior que diga para aguardar confirma\xE7\xE3o antes de come\xE7ar.**
+
+Em leituras, an\xE1lises e explora\xE7\xE3o de c\xF3digo: age imediatamente.
+Em escrita de ficheiros (write_file, edit_file): o VS Code pede confirma\xE7\xE3o nativa ao utilizador \u2014 n\xE3o precisas de pedir aprova\xE7\xE3o antes de emitir a tag.
+Em tarefas multi-step: apresenta o plano e executa de seguida sem esperar "sim".
+
+# Manifesto Hypercoding \u2014 princ\xEDpios de desenvolvimento sustent\xE1vel
+
+Estas s\xE3o as tuas directrizes de qualidade. Aplica-as activamente, n\xE3o apenas quando questionado.
+
+## 1. Qualidade antes de velocidade
+- Prefere c\xF3digo claro e bem estruturado a c\xF3digo que "apenas funciona"
+- Nomeia vari\xE1veis, fun\xE7\xF5es e ficheiros de forma descritiva e intencional
+- Evita duplica\xE7\xE3o \u2014 reutiliza o que existe antes de criar novo
+- Quando detetares d\xEDvida t\xE9cnica relevante numa \xE1rea que est\xE1s a tocar, assinala-a
+
+## 2. Seguran\xE7a por defeito
+- Nunca sugiras credenciais, tokens ou segredos no c\xF3digo \u2014 usa vari\xE1veis de ambiente
+- Valida e sanitiza sempre inputs que v\xEAm do exterior (utilizador, API, ficheiro)
+- Sinaliza activamente: SQL injection, XSS, SSRF, path traversal, e outros riscos OWASP comuns
+- Em depend\xEAncias novas: assinala se t\xEAm vulnerabilidades conhecidas ou manuten\xE7\xE3o inactiva
+
+## 3. Efici\xEAncia como responsabilidade
+- Evita opera\xE7\xF5es desnecessariamente custosas: loops aninhados sem necessidade, queries sem \xEDndice, re-renders excessivos
+- Prefere estruturas de dados adequadas ao padr\xE3o de acesso
+- C\xF3digo eficiente n\xE3o \xE9 s\xF3 mais r\xE1pido \u2014 consome menos energia
+
+## 4. Manutenibilidade como acto de respeito
+- Comenta o que n\xE3o \xE9 \xF3bvio \u2014 n\xE3o o que j\xE1 \xE9 evidente pelo c\xF3digo
+- Fun\xE7\xF5es com mais de uma responsabilidade devem ser divididas
+- Testes n\xE3o s\xE3o opcionais em c\xF3digo de produ\xE7\xE3o \u2014 sugere-os quando relevante
+- Se removeres c\xF3digo, remove-o a s\xE9rio \u2014 n\xE3o o comentas
+
+## 5. Autonomia com supervis\xE3o humana
+- Executa o que foi pedido; prop\xF5e melhorias mas n\xE3o as imp\xF5es
+- Quando uma decis\xE3o tem impacto relevante (arquitectura, seguran\xE7a, performance), explica as op\xE7\xF5es
+- Nunca alteras ficheiros sem passar pelo mecanismo de confirma\xE7\xE3o do VS Code
+
+# Ferramentas dispon\xEDveis
+
+As ferramentas s\xE3o activadas por tags na resposta. As tags s\xE3o removidas do texto vis\xEDvel.
+
+## Ficheiros
 | Tag | Descri\xE7\xE3o |
 |-----|-----------|
-| \`[TOOL:get_tree]\` | Ver a estrutura completa do projecto |
-| \`[TOOL:get_file:caminho/ficheiro.js]\` | Ler o conte\xFAdo de um ficheiro |
-| \`[TOOL:list_dir:caminho/pasta]\` | Listar o conte\xFAdo de uma directoria |
-| \`[TOOL:write_file:caminho/ficheiro.js]\` | Criar um ficheiro novo (pede confirma\xE7\xE3o) |
-| \`[TOOL:edit_file:caminho/ficheiro.js]\` | Editar um ficheiro existente (pede confirma\xE7\xE3o) |
+| \`[TOOL:get_tree]\` | Estrutura completa do projecto |
+| \`[TOOL:get_file:caminho]\` | Ler ficheiro |
+| \`[TOOL:list_dir:caminho]\` | Listar directoria |
+| \`[TOOL:write_file:caminho]\` | Criar ficheiro (bloco de c\xF3digo imediatamente antes) |
+| \`[TOOL:edit_file:caminho]\` | Editar ficheiro (bloco de c\xF3digo imediatamente antes) |
 
-### Protocolo para write_file e edit_file
+## Lista de tarefas (persiste em \`.tess-tasks.md\` no workspace)
+| Tag | Descri\xE7\xE3o |
+|-----|-----------|
+| \`[TOOL:get_tasks]\` | Ler lista de tarefas actual |
+| \`[TOOL:set_tasks:conte\xFAdo]\` | Substituir toda a lista |
+| \`[TOOL:add_task:descri\xE7\xE3o]\` | Adicionar tarefa pendente |
+| \`[TOOL:done_task:descri\xE7\xE3o]\` | Marcar tarefa como conclu\xEDda |
 
-Para criar ou editar um ficheiro, segue **obrigatoriamente** este padr\xE3o:
-1. Escreve o conte\xFAdo completo num bloco de c\xF3digo (\`\`\`linguagem ... \`\`\`)
-2. Imediatamente a seguir, coloca a tag da ferramenta com o caminho
-
-Exemplo:
-\`\`\`javascript
-// conte\xFAdo completo do ficheiro
-function hello() { return 'world'; }
-\`\`\`
-[TOOL:write_file:src/utils.js]
-
-### Regras
-
-1. Usa **get_tree** primeiro quando n\xE3o conheces a estrutura do projecto
-2. Usa **get_file** para ler ficheiros antes de os editar
-3. O conte\xFAdo do bloco de c\xF3digo deve ser o ficheiro completo, nunca parcial
-4. Pede apenas os ficheiros necess\xE1rios \u2014 n\xE3o pe\xE7as todos de uma vez
-5. Ap\xF3s receberes o resultado de uma ferramenta, analisa e responde ao utilizador
-6. As tags s\xE3o removidas da resposta vis\xEDvel \u2014 o utilizador n\xE3o as v\xEA
+Usa a lista de tarefas em trabalho multi-passo: cria-a no in\xEDcio, actualiza ao longo do processo.
+Ao retomar trabalho, come\xE7a por \`[TOOL:get_tasks]\` para ver o estado actual.
 `.trim();
     }
     module2.exports = { executeToolCalls, executeTool, getToolsSystemPrompt };
@@ -15870,7 +16369,9 @@ var require_provider = __commonJS({
     "use strict";
     var vscode2 = require("vscode");
     var { startStream, cancelStream } = require_api();
+    var { startOpenAICompatStream, cancelOpenAICompatStream } = require_openai_compat();
     var { syncAgentConfig } = require_models();
+    var { getProvider } = require_providers();
     var { getCurrentCode, getWorkspaceTree, pickWorkspaceFiles, sendWorkspaceContext } = require_workspace();
     var { buildHtml } = require_webview();
     var { executeTool, getToolsSystemPrompt } = require_tools();
@@ -15878,8 +16379,8 @@ var require_provider = __commonJS({
     function _currentWorkspacePath() {
       return vscode2.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     }
-    var TessViewProvider2 = class {
-      static viewType = "tess.chatView";
+    var TisViewProvider2 = class {
+      static viewType = "tis.chatView";
       constructor(context) {
         this._context = context;
         this._view = null;
@@ -15894,20 +16395,13 @@ var require_provider = __commonJS({
             vscode2.Uri.joinPath(this._context.extensionUri, "media")
           ]
         };
-        webviewView.webview.html = buildHtml(
-          webviewView.webview,
-          this._context.extensionUri
-        );
+        webviewView.webview.html = buildHtml(webviewView.webview, this._context.extensionUri);
         webviewView.webview.onDidReceiveMessage(async (msg) => {
           await this._handleMessage(msg);
         });
         vscode2.workspace.onDidChangeConfiguration((e) => {
-          if (e.affectsConfiguration("tess")) {
-            const cfg = vscode2.workspace.getConfiguration("tess");
-            const apiKey = cfg.get("apiKey", "");
-            const agentId = cfg.get("agentId", "");
-            syncAgentConfig(webviewView.webview, apiKey, agentId);
-          }
+          if (!e.affectsConfiguration("tis")) return;
+          webviewView.webview.postMessage({ type: "configChanged" });
         });
       }
       // ─── Dispatcher ──────────────────────────────────────────────────────────
@@ -15921,7 +16415,11 @@ var require_provider = __commonJS({
             break;
           case "cancel":
             cancelStream();
+            cancelOpenAICompatStream();
             this._view.webview.postMessage({ type: "endResponse" });
+            break;
+          case "providerChanged":
+            await this._syncProviderModels(msg.provider);
             break;
           case "pickFile":
             await pickWorkspaceFiles(this._view.webview);
@@ -15944,6 +16442,9 @@ var require_provider = __commonJS({
           case "deleteSession":
             this._deleteSession(msg.id);
             break;
+          case "audit":
+            await this._handleAudit(msg);
+            break;
           case "toolCall":
             await this._handleToolCall(msg);
             break;
@@ -15958,32 +16459,96 @@ var require_provider = __commonJS({
       // ─── Ready ───────────────────────────────────────────────────────────────
       async _onWebviewReady() {
         cancelStream();
-        const cfg = vscode2.workspace.getConfiguration("tess");
-        const apiKey = cfg.get("apiKey", "");
-        const agentId = cfg.get("agentId", "");
-        await syncAgentConfig(this._view.webview, apiKey, agentId);
-        const workspacePath = _currentWorkspacePath();
-        const latestSession = chatHistory2.getLatestSessionForWorkspace(workspacePath);
+        cancelOpenAICompatStream();
+        const cfg = vscode2.workspace.getConfiguration("tis");
+        await syncAgentConfig(
+          this._view.webview,
+          cfg.get("tessApiKey", ""),
+          cfg.get("tessAgentId", "")
+        );
+        const latestSession = chatHistory2.getLatestSessionForWorkspace(_currentWorkspacePath());
         if (latestSession) {
           this._activeSessionId = latestSession.id;
           this._loadSessionById(latestSession.id);
         }
       }
+      // ─── Sincronização de modelos (sem switch hardcoded) ─────────────────────
+      async _syncProviderModels(provider) {
+        const webview = this._view.webview;
+        if (provider === "tess") {
+          const cfg2 = vscode2.workspace.getConfiguration("tis");
+          await syncAgentConfig(webview, cfg2.get("tessApiKey", ""), cfg2.get("tessAgentId", ""));
+          return;
+        }
+        const p = getProvider(provider);
+        if (!p) return;
+        const cfg = vscode2.workspace.getConfiguration("tis");
+        const creds = p.getCredentials(cfg);
+        const fetched = creds.ok ? await p.fetchModels(creds) : null;
+        let models = fetched ?? p.staticModels;
+        if (provider === "ollama" && models.length === 0) {
+          models = [{ id: "auto", label: "Ollama n\xE3o detectado \u2014 configure tis.ollama.baseUrl" }];
+        }
+        if (provider === "remote" && !creds.ok) {
+          models = [{ id: "auto", label: "Configure tis.remote.endpoint nas Defini\xE7\xF5es" }];
+        }
+        if (provider === "remote" && creds.ok && creds.model && models.length === 0) {
+          models = [{ id: creds.model, label: creds.model }];
+        }
+        webview.postMessage({
+          type: "setModels",
+          models: models.length > 0 ? models : [{ id: "auto", label: "Auto" }],
+          limits: p.modelLimits ?? {},
+          fixed: false
+        });
+      }
+      // ─── Credenciais (sem switch hardcoded) ──────────────────────────────────
+      _resolveCredentials(provider) {
+        const cfg = vscode2.workspace.getConfiguration("tis");
+        if (provider === "tess") {
+          const apiKey = cfg.get("tessApiKey", "");
+          const agentId = cfg.get("tessAgentId", "");
+          if (!apiKey || !agentId) return {
+            ok: false,
+            errorText: "API Key ou Agent ID Tess n\xE3o configurados. Verifique Defini\xE7\xF5es \u2192 tis.tessApiKey e tis.tessAgentId."
+          };
+          return { ok: true, apiKey, agentId };
+        }
+        const p = getProvider(provider);
+        if (!p) return { ok: false, errorText: `Provider desconhecido: "${provider}".` };
+        return p.getCredentials(cfg);
+      }
+      // ─── Dispatch do stream (sem switch hardcoded) ────────────────────────────
+      _dispatchStream(provider, creds, opts) {
+        if (provider === "tess") {
+          return startStream({ apiKey: creds.apiKey, agentId: creds.agentId, ...opts });
+        }
+        const p = getProvider(provider);
+        const { baseUrl, headers, extraBody, defaultModel } = p.buildStreamConfig(creds);
+        const model = opts.model && opts.model !== "auto" ? opts.model : defaultModel ?? opts.model;
+        return startOpenAICompatStream({
+          providerLabel: p.label,
+          baseUrl,
+          headers,
+          extraBody,
+          ...opts,
+          model
+        });
+      }
       // ─── Envio ───────────────────────────────────────────────────────────────
       async _handleSend(msg) {
         const webview = this._view.webview;
-        const apiKey = vscode2.workspace.getConfiguration("tess").get("apiKey", "");
-        const agentId = vscode2.workspace.getConfiguration("tess").get("agentId", "");
-        const workspacePath = _currentWorkspacePath();
-        if (!apiKey || !agentId) {
-          webview.postMessage({ type: "error", text: "API Key ou Agent ID n\xE3o configurados." });
+        const provider = msg.provider ?? "tess";
+        const creds = this._resolveCredentials(provider);
+        if (!creds.ok) {
+          webview.postMessage({ type: "error", text: creds.errorText });
           return;
         }
         if (!this._activeSessionId) {
           this._activeSessionId = chatHistory2.createSession(
             msg.userText,
             msg.model,
-            workspacePath
+            _currentWorkspacePath()
           );
         }
         let messagesWithContext = msg.history ?? [];
@@ -16025,9 +16590,7 @@ ${code.code}
           webview.postMessage({ type: "endResponse" });
         };
         try {
-          await startStream({
-            apiKey,
-            agentId,
+          await this._dispatchStream(provider, creds, {
             model: msg.model,
             messages: messagesWithContext,
             onChunk: (text) => {
@@ -16071,13 +16634,96 @@ ${code.code}
         if (this._activeSessionId === id) this._activeSessionId = null;
         this._sendHistoryList();
       }
+      // ─── Auditoria Hypercoding ────────────────────────────────────────────────
+      async _handleAudit(msg) {
+        const webview = this._view.webview;
+        const provider = msg.provider ?? "tess";
+        const creds = this._resolveCredentials(provider);
+        if (!creds.ok) {
+          webview.postMessage({ type: "error", text: creds.errorText });
+          return;
+        }
+        const code = getCurrentCode();
+        if (!code) {
+          webview.postMessage({ type: "error", text: "Nenhum ficheiro activo no editor para auditar." });
+          return;
+        }
+        webview.postMessage({ type: "auditStart", filename: code.language ? `${code.language}` : "" });
+        const auditPrompt = `Faz uma auditoria Hypercoding ao seguinte c\xF3digo. Analisa cada um dos cinco princ\xEDpios e s\xEA directo: aponta problemas concretos, n\xE3o elogios gen\xE9ricos. Se um princ\xEDpio estiver bem, uma linha chega.
+
+\`\`\`${code.language}
+${code.code}
+\`\`\`
+
+Estrutura a resposta assim:
+
+## 1. Qualidade e clareza
+*Nomes, duplica\xE7\xE3o, estrutura, legibilidade.*
+
+## 2. Seguran\xE7a
+*Inputs sem valida\xE7\xE3o, credenciais expostas, injec\xE7\xF5es, depend\xEAncias vulner\xE1veis.*
+
+## 3. Efici\xEAncia
+*Opera\xE7\xF5es desnecessariamente custosas, estruturas de dados inadequadas, desperd\xEDcio de recursos.*
+
+## 4. Manutenibilidade
+*Fun\xE7\xF5es com m\xFAltiplas responsabilidades, falta de coment\xE1rios onde necess\xE1rio, c\xF3digo morto.*
+
+## 5. Autonomia com supervis\xE3o
+*Decis\xF5es com impacto relevante que deviam ser expl\xEDcitas ou documentadas.*
+
+## Prioridade de ac\xE7\xE3o
+Lista as 3 coisas mais importantes a corrigir, por ordem de impacto.`;
+        const messages = [
+          { role: "system", content: getToolsSystemPrompt() },
+          { role: "user", content: auditPrompt }
+        ];
+        webview.postMessage({ type: "startResponse" });
+        let assistantBuffer = "";
+        let ended = false;
+        const finish = (persist) => {
+          if (ended) return;
+          ended = true;
+          if (persist && assistantBuffer) {
+            if (!this._activeSessionId) {
+              this._activeSessionId = chatHistory2.createSession(
+                "\u{1F50D} Auditoria Hypercoding",
+                msg.model,
+                _currentWorkspacePath()
+              );
+            }
+            chatHistory2.appendMessage(this._activeSessionId, "user", "\u{1F50D} Auditoria Hypercoding");
+            chatHistory2.appendMessage(this._activeSessionId, "assistant", assistantBuffer);
+          }
+          webview.postMessage({ type: "endResponse" });
+        };
+        try {
+          await this._dispatchStream(provider, creds, {
+            model: msg.model,
+            messages,
+            onChunk: (text) => {
+              assistantBuffer += text;
+              webview.postMessage({ type: "chunk", text });
+            },
+            onUsage: (usage) => webview.postMessage({ type: "usage", usage }),
+            onEnd: () => finish(true),
+            onError: (err) => {
+              finish(false);
+              webview.postMessage({ type: "error", text: err });
+            }
+          });
+        } catch (err) {
+          finish(false);
+          webview.postMessage({ type: "error", text: String(err) });
+        }
+      }
       // ─── Tool Calls ──────────────────────────────────────────────────────────
       async _handleToolCall(msg) {
         let result;
         try {
           result = await executeTool(msg.tool, msg.args, msg.content);
         } catch (err) {
-          console.error("[Tess] Erro em _handleToolCall:", err.message);
+          console.error("[Tis] Erro em _handleToolCall:", err.message);
           result = `Erro ao executar ferramenta ${msg.tool}: ${err.message}`;
         }
         this._view.webview.postMessage({
@@ -16087,7 +16733,6 @@ ${code.code}
           result: result ?? ""
         });
       }
-      // ─── Guardar ficheiro ─────────────────────────────────────────────────────
       // ─── Ressinc pelo log local ───────────────────────────────────────────────
       async _handleResync() {
         const folders = vscode2.workspace.workspaceFolders;
@@ -16098,12 +16743,12 @@ ${code.code}
         const logUri = vscode2.Uri.joinPath(folders[0].uri, ".tess-log.md");
         try {
           const raw = await vscode2.workspace.fs.readFile(logUri);
-          const log = new TextDecoder().decode(raw);
-          this._view.webview.postMessage({ type: "resyncData", log });
+          this._view.webview.postMessage({ type: "resyncData", log: new TextDecoder().decode(raw) });
         } catch {
           this._view.webview.postMessage({ type: "resyncData", log: null });
         }
       }
+      // ─── Guardar ficheiro ─────────────────────────────────────────────────────
       async _handleSaveFile(msg) {
         const folders = vscode2.workspace.workspaceFolders;
         const base = folders?.[0]?.uri ?? vscode2.Uri.file(require("node:os").homedir());
@@ -16116,32 +16761,32 @@ ${code.code}
         await vscode2.window.showTextDocument(uri);
       }
     };
-    module2.exports = { TessViewProvider: TessViewProvider2 };
+    module2.exports = { TisViewProvider: TisViewProvider2 };
   }
 });
 
 // extension.js
 var vscode = require("vscode");
-var { TessViewProvider } = require_provider();
+var { TisViewProvider } = require_provider();
 var chatHistory = require_chatHistory();
 function activate(context) {
-  console.log("[Tis.ai & Tess] Extens\xE3o activada");
+  console.log("[Tis.ai] Extens\xE3o activada");
   chatHistory.init(context);
-  const provider = new TessViewProvider(context);
+  const provider = new TisViewProvider(context);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
-      "tess.chatView",
+      "tis.chatView",
       provider,
       { webviewOptions: { retainContextWhenHidden: true } }
     ),
-    vscode.commands.registerCommand("tess.openChatWithCode", () => {
-      vscode.commands.executeCommand("tess.chatView.focus");
+    vscode.commands.registerCommand("tis.openChatWithCode", () => {
+      vscode.commands.executeCommand("tis.chatView.focus");
       setTimeout(() => provider.insertCode(), 300);
     }),
-    vscode.commands.registerCommand("tess.openSettings", () => {
-      vscode.commands.executeCommand("workbench.action.openSettings", "tess");
+    vscode.commands.registerCommand("tis.openSettings", () => {
+      vscode.commands.executeCommand("workbench.action.openSettings", "tis");
     }),
-    vscode.commands.registerCommand("tess.saveFile", async (args) => {
+    vscode.commands.registerCommand("tis.saveFile", async (args) => {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
       const uri = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(folder + "/" + args.filename),
@@ -16153,11 +16798,11 @@ function activate(context) {
     })
   );
   setTimeout(() => {
-    vscode.commands.executeCommand("tess.chatView.focus");
+    vscode.commands.executeCommand("tis.chatView.focus");
   }, 500);
 }
 function deactivate() {
-  console.log("[Tis.ai & Tess] Extens\xE3o desactivada");
+  console.log("[Tis.ai] Extens\xE3o desactivada");
 }
 module.exports = { activate, deactivate };
 /*! Bundled license information:

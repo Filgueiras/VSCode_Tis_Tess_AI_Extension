@@ -8,9 +8,11 @@ const vscode = acquireVsCodeApi();
 const messagesEl     = document.getElementById('messages');
 const inputEl        = document.getElementById('userInput');
 const sendBtn        = document.getElementById('sendBtn');
+const providerSelect = document.getElementById('providerSelect');
 const modelSelect    = document.getElementById('modelSelect');
 const codeBtn        = document.getElementById('codeBtn');
 const contextBtn     = document.getElementById('contextBtn');
+const auditBtn       = document.getElementById('auditBtn');
 const historyBtn     = document.getElementById('historyBtn');
 const clearBtn       = document.getElementById('clearBtn');
 const resyncBtn      = document.getElementById('resyncBtn');
@@ -963,6 +965,7 @@ function send() {
         type:     'send',
         userText: text,
         model:    modelSelect.value,
+        provider: providerSelect.value,
         history:  history.slice(0, -1)
     });
 }
@@ -982,6 +985,10 @@ inputEl.addEventListener('input', () => {
 
 codeBtn.addEventListener('click', () => vscode.postMessage({ type: 'pickFile' }));
 contextBtn.addEventListener('click', () => vscode.postMessage({ type: 'getWorkspaceContext' }));
+auditBtn.addEventListener('click', () => {
+    if (waiting) return;
+    vscode.postMessage({ type: 'audit', model: modelSelect.value, provider: providerSelect.value });
+});
 resyncBtn.addEventListener('click', () => {
     if (waiting) return;
     vscode.postMessage({ type: 'resync' });
@@ -997,6 +1004,10 @@ historyBtn.addEventListener('click', () => {
 });
 
 modelSelect.addEventListener('change', updateContextMeter);
+
+providerSelect.addEventListener('change', () => {
+    vscode.postMessage({ type: 'providerChanged', provider: providerSelect.value });
+});
 
 clearBtn.addEventListener('click', () => {
     history         = [];
@@ -1085,6 +1096,7 @@ window.addEventListener('message', ({ data }) => {
                 type:     'send',
                 userText: combined,
                 model:    modelSelect.value,
+                provider: providerSelect.value,
                 history:  history.slice(0, -1),
                 isTool:   true
             });
@@ -1104,6 +1116,7 @@ window.addEventListener('message', ({ data }) => {
                 type:     'send',
                 userText: logMsg,
                 model:    modelSelect.value,
+                provider: providerSelect.value,
                 history:  history.slice(0, -1),
                 isTool:   true
             });
@@ -1181,6 +1194,7 @@ window.addEventListener('message', ({ data }) => {
                 const emptyEl = document.getElementById('empty');
                 if (emptyEl) emptyEl.innerHTML = 'Ol\u00e1! Como posso ajudar?<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
             }
+            if (data.limits) window.MODEL_LIMITS = { ...(window.MODEL_LIMITS || {}), ...data.limits };
             modelRowEl.classList.remove('hidden');
             const current = modelSelect.value;
             modelSelect.innerHTML = data.models
@@ -1213,6 +1227,21 @@ window.addEventListener('message', ({ data }) => {
 
             if (data.model && data.model !== 'auto') modelSelect.value = data.model;
             updateContextMeter();
+            break;
+
+        case 'auditStart': {
+            const label = data.filename ? `Auditoria Hypercoding — ${data.filename}` : 'Auditoria Hypercoding';
+            watermarkEl.classList.add('hidden');
+            appendMessage('user', `🔍 ${label}`);
+            history.push({ role: 'user', content: `🔍 ${label}` });
+            setWaiting(true);
+            beginAssistantBubble();
+            break;
+        }
+
+        case 'configChanged':
+            // Definições mudaram — re-sincroniza os modelos do provider activo
+            vscode.postMessage({ type: 'providerChanged', provider: providerSelect.value });
             break;
     }
 });

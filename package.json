@@ -1,8 +1,8 @@
 {
-  "name": "tis-tess",
-  "displayName": "Tis.ai - Powered by Tess",
-  "description": "Assistente de código com IA para VS Code — powered by TIS to use Tess.im",
-  "version": "3.2.0",
+  "name": "tis-code",
+  "displayName": "Tis.ai",
+  "description": "Assistente de código com IA para VS Code — powered by TIS, com suporte a Tess.im e TisAI",
+  "version": "5.0.0",
   "publisher": "tis-angola",
   "author": {
     "name": "Marco A. F. Guimarães",
@@ -33,7 +33,7 @@
     "tis angola"
   ],
   "activationEvents": [
-    "onView:tess.chatView"
+    "onView:tis.chatView"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -41,7 +41,7 @@
       "activitybar": [
         {
           "id": "tis-sidebar",
-          "title": "Tis.ai - Tess",
+          "title": "Tis.ai",
           "icon": "TIS_vector_vscode.svg"
         }
       ]
@@ -50,7 +50,7 @@
       "tis-sidebar": [
         {
           "type": "webview",
-          "id": "tess.chatView",
+          "id": "tis.chatView",
           "name": "Chat Tis.ai",
           "icon": "TIS_vector_vscode.svg"
         }
@@ -58,19 +58,19 @@
     },
     "commands": [
       {
-        "command": "tess.openChatWithCode",
+        "command": "tis.openChatWithCode",
         "title": "Tis: Chat com Código Actual"
       },
       {
-        "command": "tess.openSettings",
+        "command": "tis.openSettings",
         "title": "Tis: Abrir Definições"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "tess.openChatWithCode",
-          "group": "tess@1",
+          "command": "tis.openChatWithCode",
+          "group": "tis@1",
           "when": "editorTextFocus"
         }
       ]
@@ -78,17 +78,53 @@
     "configuration": {
       "title": "Tis.ai",
       "properties": {
-        "tess.apiKey": {
+        "tis.tessApiKey": {
           "type": "string",
           "default": "",
           "description": "Token de API da plataforma Tess.im. Obtenha em tess.im/dashboard/user/tokens",
-          "markdownDescription": "Token de API da plataforma Tess.im. Obtenha em [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens)"
+          "markdownDescription": "Token de API da plataforma **Tess.im**. Obtenha em [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens)"
         },
-        "tess.agentId": {
+        "tis.tessAgentId": {
           "type": "string",
           "default": "",
           "description": "ID numérico do agente Tess. Visível no URL do agente: tess.im/dashboard/agents/12345/edit",
-          "markdownDescription": "ID numérico do agente Tess. Visível no URL do agente: `tess.im/dashboard/agents/**12345**/edit`"
+          "markdownDescription": "ID numérico do agente **Tess**. Visível no URL do agente: `tess.im/dashboard/agents/**12345**/edit`"
+        },
+        "tis.tisAiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Chave API para o TisAI (ai.tisdev.cloud). Obtenha no painel TisAI em Nova Chave.",
+          "markdownDescription": "Chave API para o **TisAI** (`ai.tisdev.cloud`). Obtenha no painel TisAI clicando em **Nova Chave**. Formato: `tis_...`"
+        },
+        "tis.tisAiAssistantId": {
+          "type": "string",
+          "default": "",
+          "description": "(Opcional) ID numérico do assistente TisAI a usar nas chamadas.",
+          "markdownDescription": "(Opcional) ID numérico do assistente TisAI. Quando definido, as chamadas incluem `assistant_id` no corpo do pedido."
+        },
+        "tis.ollama.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "URL base do servidor Ollama. Use http://localhost:11434 para instalação local.",
+          "markdownDescription": "URL base do servidor **Ollama**. Padrão: `http://localhost:11434`. Pode apontar para um servidor Ollama remoto."
+        },
+        "tis.remote.endpoint": {
+          "type": "string",
+          "default": "",
+          "description": "URL base do endpoint remoto compatível com OpenAI (ex: https://meuservidor.com/v1). Deve suportar POST /chat/completions com streaming SSE.",
+          "markdownDescription": "URL base do **endpoint remoto** compatível com OpenAI. Exemplo: `https://meuservidor.com/v1`. Deve suportar `POST /chat/completions` com streaming SSE."
+        },
+        "tis.remote.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "(Opcional) Chave API para autenticação no endpoint remoto. Enviada como Authorization: Bearer.",
+          "markdownDescription": "(Opcional) Chave API para autenticação no endpoint remoto. Enviada como `Authorization: Bearer <key>`."
+        },
+        "tis.remote.model": {
+          "type": "string",
+          "default": "",
+          "description": "(Opcional) Modelo por omissão para o endpoint remoto. Usado quando a listagem de modelos não está disponível.",
+          "markdownDescription": "(Opcional) Modelo por omissão para o endpoint remoto. Usado quando `/models` não está disponível ou como pré-selecção."
         }
       }
     }

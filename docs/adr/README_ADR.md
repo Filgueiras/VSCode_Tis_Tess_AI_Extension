@@ -1,6 +1,6 @@
-# Architecture Decision Records (até versão 3.1.0)
+# Architecture Decision Records (até versão 5.0.0)
 
-Registo das decisões de arquitectura do projecto **Tis Tess**.
+Registo das decisões de arquitectura do projecto **Tis.ai — Hypercoding Multi-IA**.
 
 Um ADR documenta uma decisão técnica significativa: o contexto que a motivou, o que foi decidido e as consequências dessa escolha.
 
@@ -32,3 +32,7 @@ Um ADR documenta uma decisão técnica significativa: o contexto que a motivou, 
 | [ADR-022](ADR-022-integracao-agente-tools-alma-corpo.md) | Integração agente-ferramentas: ligar a alma ao corpo | Aceite |
 | [ADR-023](ADR-023-feedback-visual-tools-e-ressinc.md) | Feedback visual de tool calls e ressincronização de sessão | Aceite |
 | [ADR-024](ADR-024-deteccao-recuperacao-dessincronia.md) | Detecção e recuperação automática de dessincronia em tool calls | Aceite |
+| [ADR-025](ADR-025-multi-provider-tess-tisai.md) | Suporte multi-provider: Tess e TisAI | Aceite |
+| [ADR-026](ADR-026-rebrand-tis-tess-para-tis-code.md) | Rebrand: de tis-tess para tis-code | Aceite |
+| [ADR-027](ADR-027-provider-registry-openai-compat.md) | Registry de providers e cliente OpenAI-compat genérico | Aceite |
+| [ADR-028](ADR-028-hypercoding-auditoria-activa.md) | Auditoria Hypercoding activa | Aceite |

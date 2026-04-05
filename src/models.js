@@ -84,7 +84,12 @@ async function fetchAgentModels(apiKey, agentId) {
  * @param {string} agentId
  */
 async function syncAgentConfig(webview, apiKey, agentId) {
-    if (!apiKey || !agentId) return;
+    // Sem credenciais Tess: envia lista estática para desbloquear a UI
+    // (o erro de configuração será mostrado apenas no envio)
+    if (!apiKey || !agentId) {
+        webview.postMessage({ type: 'setModels', models: MODELS, fixed: false, limits: MODEL_LIMITS });
+        return;
+    }
 
     const models = await fetchAgentModels(apiKey, agentId);
 
@@ -93,14 +98,15 @@ async function syncAgentConfig(webview, apiKey, agentId) {
     // undefined → erro de rede, usa lista estática para não bloquear a interface
     const fixed = models === null;
     let modelList;
-    if (fixed)                 modelList = [{ id: 'auto', label: 'Padrão do agente' }];
-    else if (models === undefined) modelList = MODELS;
-    else                       modelList = models;
+    if (fixed)                      modelList = [{ id: 'auto', label: 'Padrão do agente' }];
+    else if (models === undefined)  modelList = MODELS;
+    else                            modelList = models;
 
-    webview.postMessage({ type: 'setModels', models: modelList, fixed });
+    webview.postMessage({ type: 'setModels', models: modelList, fixed, limits: MODEL_LIMITS });
 }
 
 // ─── Exports ───────────────────────────────────────────────────────────────────
+// Apenas Tess aqui. Modelos de outros providers vivem em src/providers/*.js
 
 module.exports = {
     MODELS,

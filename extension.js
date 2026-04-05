@@ -2,37 +2,37 @@
 'use strict';
 
 const vscode = require('vscode');
-const { TessViewProvider } = require('./src/provider');
+const { TisViewProvider } = require('./src/provider');
 
-const chatHistory              = require('./src/chatHistory');
+const chatHistory = require('./src/chatHistory');
 
 function activate(context) {
-    console.log('[Tis.ai & Tess] Extensão activada');
+    console.log('[Tis.ai] Extensão activada');
 
     // 1. Histórico — inicializa o módulo de persistência
     chatHistory.init(context);
 
     // 2. Provider do chat (único ponto de entrada visual)
-    const provider = new TessViewProvider(context);
+    const provider = new TisViewProvider(context);
 
     context.subscriptions.push(
 
         vscode.window.registerWebviewViewProvider(
-            'tess.chatView',
+            'tis.chatView',
             provider,
             { webviewOptions: { retainContextWhenHidden: true } }
         ),
 
-        vscode.commands.registerCommand('tess.openChatWithCode', () => {
-            vscode.commands.executeCommand('tess.chatView.focus');
+        vscode.commands.registerCommand('tis.openChatWithCode', () => {
+            vscode.commands.executeCommand('tis.chatView.focus');
             setTimeout(() => provider.insertCode(), 300);
         }),
 
-        vscode.commands.registerCommand('tess.openSettings', () => {
-            vscode.commands.executeCommand('workbench.action.openSettings', 'tess');
+        vscode.commands.registerCommand('tis.openSettings', () => {
+            vscode.commands.executeCommand('workbench.action.openSettings', 'tis');
         }),
 
-        vscode.commands.registerCommand('tess.saveFile', async (args) => {
+        vscode.commands.registerCommand('tis.saveFile', async (args) => {
             const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
             const uri = await vscode.window.showSaveDialog({
                 defaultUri: vscode.Uri.file(folder + '/' + args.filename),
@@ -47,12 +47,12 @@ function activate(context) {
 
     // Força o chat a ficar visível assim que a extensão activa
     setTimeout(() => {
-        vscode.commands.executeCommand('tess.chatView.focus');
+        vscode.commands.executeCommand('tis.chatView.focus');
     }, 500);
 }
 
 function deactivate() {
-    console.log('[Tis.ai & Tess] Extensão desactivada');
+    console.log('[Tis.ai] Extensão desactivada');
 }
 
 module.exports = { activate, deactivate };

@@ -1,0 +1,15 @@
+[en]
+1 Awareness over intuition
+The Engineer is accountable for what they deliver. AI doesn't sign contracts, doesn't attend crisis meetings, and is never held responsible. If you can't explain the code, you can't defend it — and you shouldn't sign it.
+
+2 Mastery as prerequisite
+Using AI without technical foundation is not productivity — it's chance. The Engineer knows what's under the hood because they understand the engine — even if they didn't build it from scratch.
+
+3 Context orchestration
+Mastery of context is what separates precision from volume. Those who know what they want can instruct. Those who don't, accept whatever comes.
+
+4 Systematic review
+We use AI to audit AI. Trust doesn't come from faith in the output — it comes from structured verification that the output is correct.
+
+5 Design over typing
+The bottleneck is no longer the keyboard. It's strategic thinking. Those who design well, instruct well — and those who instruct well, scale without limit.

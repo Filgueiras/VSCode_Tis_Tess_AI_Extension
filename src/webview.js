@@ -2,7 +2,7 @@
 'use strict';
 
 const vscode = require('vscode');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 function getNonce() {
     return crypto.randomBytes(16).toString('hex');
@@ -44,7 +44,7 @@ function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
                  style-src ${cspSource} 'unsafe-inline';
                  script-src ${cspSource} 'nonce-${nonce}';
                  img-src ${cspSource} data:;
-                 connect-src https://api.tess.im;">
+                 connect-src https://api.tess.im https://ai.tisdev.cloud http://localhost:* http://127.0.0.1:*;">
   <title>Tess AI</title>
   <link rel="stylesheet" href="${cssUri}">
 </head>
@@ -52,6 +52,15 @@ function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
 
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
   <div id="toolbar">
+    <div id="providerRow">
+      <label>Ligação:</label>
+      <select id="providerSelect">
+        <option value="tess">Tess</option>
+        <option value="tisai">TisAI</option>
+        <option value="ollama">Ollama (local)</option>
+        <option value="remote">Remoto</option>
+      </select>
+    </div>
     <div id="modelRow">
       <label>Modelo:</label>
       <select id="modelSelect">${modelOptions}</select>
@@ -76,6 +85,7 @@ function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
     <div id="actionButtons">
       <button class="btn-ghost" id="codeBtn">📎 Adicionar ficheiros</button>
       <button class="btn-ghost" id="contextBtn">🗂️ Contexto do projecto</button>
+      <button class="btn-ghost" id="auditBtn" title="Análise Hypercoding: segurança, eficiência, manutenibilidade">🔍 Hypercoding</button>
       <button class="btn-ghost" id="resyncBtn" title="Injeta o log de acções no chat para ressincronizar o agente">🔄 Log Ressinc</button>
     </div>
     <div id="inputRow">

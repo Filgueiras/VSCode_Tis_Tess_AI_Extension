@@ -1,134 +1,162 @@
-# Tess Tis
+# Tis.ai — Hypercoding Multi-IA
 
-Extensão para VS Code que integra os agentes [Tess](https://tess.im) directamente no editor.
-Mantém o contexto do projecto, historial de conversas por workspace e suporte a ferramentas de leitura e escrita de ficheiros.
+> Versão 5.0.0 · [TIS Angola](https://tis.ao)
+
+Extensão para VS Code que integra múltiplos assistentes de IA directamente no editor, com suporte a **[Tess](https://tess.im)**, **TisAI**, **Ollama** (local) e qualquer endpoint remoto compatível com OpenAI.
+
+Mantém contexto do projecto, histórico de conversas por workspace, tool calling com leitura e escrita de ficheiros, e auditoria activa de código segundo os princípios Hypercoding.
+
+---
+
+## O Manifesto Hypercoding
+
+**Hypercoding** é a prática de desenvolver software com IA como co-piloto permanente — não para substituir o pensamento humano, mas para amplificá-lo.
+
+O objectivo não é gerar código mais depressa. É gerar **código melhor**, com maior consciência das suas consequências: para quem o mantém, para quem o usa, e para os sistemas em que corre.
+
+### Os cinco compromissos
+
+**1. Qualidade antes de velocidade**
+O Hypercoding rejeita a lógica de "funciona, já chega". Código que funciona mas é ilegível, inseguro ou frágil cria dívida que outros pagarão. A IA deve questionar atalhos — não apenas executá-los.
+
+**2. Segurança por defeito**
+Credenciais no código, inputs sem validação, dependências sem auditoria — são falhas de responsabilidade, não apenas de técnica. O assistente sinaliza riscos de segurança sem esperar que se peça.
+
+**3. Eficiência como princípio ambiental**
+Código que desperdiça recursos (loops desnecessários, queries sem índice, re-renders em excesso) tem custo energético real. Simplicidade e eficiência não são purismo — são responsabilidade.
+
+**4. Manutenibilidade como acto de respeito**
+O código que escrevemos hoje será lido por outros amanhã — talvez por nós próprios, num dia em que não nos lembramos de nada. Nomear bem, documentar o que não é óbvio e estruturar com clareza são actos de respeito pelo trabalho colectivo.
+
+**5. Autonomia com supervisão humana**
+A IA executa, o humano decide. O assistente pode ler e propor; só altera o que o utilizador aprovar explicitamente. Velocidade sem controlo não é Hypercoding — é imprudência.
 
 ---
 
 ## Funcionalidades
 
-- **Chat com streaming** — respostas em tempo real, directamente no painel lateral
-- **Contexto automático** — o ficheiro activo (ou selecção) é incluído em cada mensagem
-- **Árvore do projecto** — injectada automaticamente na primeira mensagem de cada sessão
-- **Histórico por workspace** — cada projecto tem as suas próprias conversas, sem misturar contexto
-- **Apagar e renomear sessões** — gestão de conversas directamente no drawer de histórico
-- **Tabelas e Markdown** — cabeçalhos, listas, checkboxes, blocos de código, tabelas e links renderizados
-- **Botão Guardar** — guarda qualquer bloco de código directamente para um ficheiro
-- **Medidor de contexto** — mostra os tokens consumidos em tempo real
-- **Múltiplos modelos** — selecção do modelo directamente no painel
-- **Tool calling** — o agente pode ler e escrever ficheiros do projecto com confirmação antes de executar
-- **Feedback visual de operações** — cada acção do agente (ler, criar, editar ficheiro) aparece no chat em tempo real
-- **Log local de acções** — todas as operações são registadas em `.tess-log.md` na raiz do workspace
-- **Ressincronização de sessão** — botão e deteção automática de perda de sincronia entre o agente e o estado local
+- **Multi-provider** — Tess, TisAI, Ollama (local) e endpoint remoto, seleccionáveis por dropdown
+- **🔍 Auditoria Hypercoding** — analisa o ficheiro activo segundo os 5 princípios, com prioridade de acção
+- **Chat com streaming** — respostas em tempo real no painel lateral
+- **Contexto automático** — ficheiro activo (ou selecção) incluído em cada mensagem
+- **Árvore do projecto** — injectada na primeira mensagem de cada sessão
+- **Histórico por workspace** — cada projecto tem as suas próprias conversas
+- **Tool calling com confirmação** — leitura autónoma; escrita requer aprovação explícita
+- **Feedback visual de operações** — cada acção aparece no chat em tempo real
+- **Log local de acções** — registo cumulativo em `.tess-log.md` no workspace
+- **Ressincronização de sessão** — detecção automática de perda de sincronia e recuperação via log
+- **Medidor de contexto** — tokens consumidos em tempo real com aviso de proximidade ao limite
+- **Modelos dinâmicos** — lista actualizada via API para Tess e TisAI; descoberta automática para Ollama
 
 ---
 
 ## Instalação
 
-1. Abra o VS Code
-2. `Ctrl+Shift+X` → pesquise `Tess Tis`
-3. Clique em **Install**
+1. `Ctrl+Shift+X` → pesquise **Tis.ai**
+2. Clique em **Install**
 
-Ou instale manualmente a partir de um ficheiro `.vsix`:
-
+Ou instale manualmente via `Extensions (···) → Install from VSIX…`
 
 ---
 
 ## Configuração
 
-A extensão precisa de dois valores para funcionar:
+`Ctrl+,` → pesquise `tis`. Configure apenas o(s) provider(s) que vai usar.
 
+### Tess
 | Definição | O que preencher |
 |---|---|
-| `tess.apiKey` | Token criado em [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens) |
-| `tess.agentId` | Número no URL do agente — `tess.im/dashboard/agents/12345/edit` |
+| `tis.tessApiKey` | Token de [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens) |
+| `tis.tessAgentId` | Número no URL do agente — `tess.im/dashboard/agents/12345/edit` |
 
-`Ctrl+,` → pesquise `tess` → preencha os dois campos.
-
-As definições têm âmbito global — são configuradas uma única vez e ficam disponíveis em todos os workspaces.
-
----
-
-## Modelos disponíveis
-
-| Modelo | Melhor para |
+### TisAI
+| Definição | O que preencher |
 |---|---|
-| **Auto** | Deixar o agente Tess decidir |
-| **Tess 5** | Tarefas gerais, mais económico |
-| **Claude Opus 4.5** | Raciocínio complexo, arquitectura |
-| **Claude Sonnet 4.5** | Equilíbrio entre qualidade e velocidade |
-| **Claude Haiku 4.5** | Respostas rápidas, tarefas simples |
-| **GPT-4o / GPT-4.1** | Alternativa OpenAI |
-| **Gemini 2.5 Pro** | Contextos muito longos |
-| **Gemini 2.0 Flash** | Velocidade máxima |
+| `tis.tisAiApiKey` | Chave do painel TisAI — formato `tis_...` |
+| `tis.tisAiAssistantId` | (Opcional) ID do assistente TisAI |
+
+### Ollama (local)
+| Definição | O que preencher |
+|---|---|
+| `tis.ollama.baseUrl` | URL do servidor Ollama (padrão: `http://localhost:11434`) |
+
+### Endpoint remoto
+| Definição | O que preencher |
+|---|---|
+| `tis.remote.endpoint` | URL base — ex: `https://meuservidor.com/v1` |
+| `tis.remote.apiKey` | (Opcional) Chave API — enviada como `Authorization: Bearer` |
+| `tis.remote.model` | (Opcional) Modelo por omissão |
+
+> O endpoint remoto deve suportar `POST /chat/completions` com streaming SSE no formato OpenAI.
 
 ---
 
-## Utilização
+## Providers e modelos
 
-### Conversar
+O dropdown **"Ligação:"** alterna entre os providers. A lista de modelos actualiza automaticamente ao mudar.
 
-1. Escreva a pergunta na caixa de texto no fundo do painel
-2. Prima `Enter` ou clique em **Enviar**
-3. Para parar uma resposta a meio, clique em **Parar**
+| Provider | Modelos | Descoberta |
+|---|---|---|
+| **Tess** | Dinâmicos conforme o agente | `GET /agents/{id}` |
+| **TisAI** | DeepSeek, Llama, Qwen e outros | `GET /models` → estático |
+| **Ollama** | Os modelos instalados localmente | `GET /api/tags` |
+| **Remoto** | Dependente do servidor | `GET /models` → modelo fixo configurado |
 
-### Adicionar ficheiros
+---
 
-Clique em **📎 Adicionar ficheiros** para incluir o conteúdo de ficheiros que não estão abertos no editor.
+## Auditoria Hypercoding
 
-### Contexto do projecto
+Clique em **🔍 Hypercoding** na barra de acção para analisar o ficheiro activo no editor.
 
-Clique em **🗂️ Contexto do projecto** para injectar manualmente a árvore de ficheiros do workspace.
+A auditoria examina o código segundo os 5 princípios e devolve:
+- Problemas concretos em cada dimensão (qualidade, segurança, eficiência, manutenibilidade, autonomia)
+- **Prioridade de acção** — as 3 coisas mais importantes a corrigir, por ordem de impacto
 
-### Operações de ficheiros (tool calling)
+Funciona com qualquer provider seleccionado.
 
-O agente pode ler, criar e editar ficheiros do projecto. Para cada operação:
+---
 
-1. O agente pede confirmação via diálogo modal ("Tess quer editar: src/api.js")
-2. O chat mostra o tipo de operação e o caminho do ficheiro em tempo real
-3. O ficheiro alterado abre automaticamente no editor após a operação
+## Tool calling
 
-Todas as operações são registadas em `.tess-log.md` na raiz do workspace.
+O agente pode interagir com os ficheiros do projecto:
 
-### Ressincronização
+| Operação | Confirmação |
+|---|---|
+| Ler ficheiro / listar directoria / ver estrutura | Não |
+| Criar ou editar ficheiro | **Sim** — diálogo modal |
 
-Se a ligação cair durante uma sequência de operações, o agente pode perder contexto. Nesse caso:
-
-- O chat mostra automaticamente um aviso ⚠️ com link **Ressincronizar agora?**
-- Em alternativa, clique em **🔄 Log Ressinc** para injectar o log de acções no chat
-- O agente analisa o log e retoma o trabalho a partir do ponto de interrupção
-
-### Histórico
-
-Clique em **Histórico** para abrir o drawer de conversas do workspace actual.
-Em cada sessão, clique em **···** para renomear ou apagar.
-
-### Menu de contexto no editor
-
-Clique com o botão direito em qualquer ficheiro ou selecção → **Tis: Chat com Código Actual**
+Todas as operações ficam registadas em `.tess-log.md`. Se a ligação cair durante uma sequência, o botão **🔄 Log Ressinc** injeta o log no chat para o agente retomar.
 
 ---
 
 ## Resolução de problemas
 
-| Sintoma | Causa | Solução |
-|---|---|---|
-| Painel bloqueado com aviso de configuração | `tess.apiKey` ou `tess.agentId` não preenchidos | `Ctrl+,` → pesquise `tess` |
-| Selector de modelo mostra "Padrão do agente" (desactivado) | Agente com modelo fixo | Normal — o agente usa um modelo fixo, não expõe escolha |
-| Resposta parou a meio | Timeout ou erro de rede | Clique **Parar** e tente novamente |
-| Agente perdeu contexto das operações | Perda de sincronia durante tool calls | Clique **🔄 Log Ressinc** ou use o link ⚠️ no chat |
-| `.tess-log.md` não é criado | Sem workspace aberto | Abra uma pasta no VS Code antes de usar ferramentas |
-| Painel não aparece na barra lateral | Vista oculta | `View → Open View… → Tess Chat` |
+| Sintoma | Solução |
+|---|---|
+| "API Key ou Agent ID Tess não configurados" | `Ctrl+,` → `tis.tessApiKey` + `tis.tessAgentId` |
+| "Chave API TisAI não configurada" | `Ctrl+,` → `tis.tisAiApiKey` |
+| "Endpoint remoto não configurado" | `Ctrl+,` → `tis.remote.endpoint` |
+| Ollama mostra "não detectado" | Verifique se o servidor Ollama está a correr em `tis.ollama.baseUrl` |
+| Selector de modelo desactivado (Tess) | Agente com modelo fixo — comportamento normal |
+| Resposta parou a meio | Clique **Parar** e tente novamente |
+| Agente perdeu contexto de operações | **🔄 Log Ressinc** ou siga o aviso ⚠️ |
+| Painel não aparece | `View → Open View… → Chat Tis.ai` |
+
+---
+
+## Migração
+
+| Versão | Alteração |
+|---|---|
+| v3.x → v4.x | `tess.apiKey` → `tis.tessApiKey` · `tess.agentId` → `tis.tessAgentId` |
+| v4.x → v5.x | Sem quebra de configuração — apenas funcionalidades novas |
 
 ---
 
 ## Requisitos
 
-- VS Code 1.80 ou superior
-- Conta em [tess.im](https://tess.im) com um agente do tipo **Chat** configurado
-
----
-
-## Versão
-
-3.1.0 · [TIS Angola](https://tis.ao)
+- VS Code 1.60 ou superior
+- Para Tess: conta em [tess.im](https://tess.im) com agente do tipo **Chat**
+- Para TisAI: chave API em [ai.tisdev.cloud](https://ai.tisdev.cloud)
+- Para Ollama: [ollama.com](https://ollama.com) instalado localmente ou servidor acessível
+- Para Remoto: qualquer servidor com `POST /chat/completions` e streaming SSE formato OpenAI

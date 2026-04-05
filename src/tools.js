@@ -1,5 +1,3 @@
-//https://pareto-workflows.storage.googleapis.com/5a521f9d4ca1a927ec8e1e479a645bd60433b10c/tools.js
-
 const vscode = require('vscode');
 const { readWorkspaceFile, getWorkspaceTree } = require('./workspace');
 
@@ -15,7 +13,7 @@ async function appendToActionLog(toolName, args, result) {
     const argStr    = args ? `: ${args}` : '';
     const line      = `${status} [${timestamp}] ${toolName}${argStr} → ${result.split('\n')[0]}\n`;
 
-    const logUri = vscode.Uri.joinPath(folders[0].uri, '.tess-log.md');
+    const logUri = vscode.Uri.joinPath(folders[0].uri, '.tis-log.md');
 
     let existing = '';
     try {
@@ -24,7 +22,7 @@ async function appendToActionLog(toolName, args, result) {
     } catch { /* ficheiro ainda não existe */ }
 
     if (!existing) {
-        existing = '# Tess — Log de Acções\n\n';
+        existing = '# TIS.ai — Log de Acções\n\n';
     }
 
     await vscode.workspace.fs.writeFile(logUri, new TextEncoder().encode(existing + line));
@@ -162,7 +160,7 @@ async function _toolListDir(toolName, args = '') {
 function _tasksUri() {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders) return null;
-    return vscode.Uri.joinPath(folders[0].uri, '.tess-tasks.md');
+    return vscode.Uri.joinPath(folders[0].uri, '.tis-tasks.md');
 }
 
 async function _readTasksFile(uri) {
@@ -184,7 +182,7 @@ async function _toolSetTasks(toolName, args) {
     if (!args) return 'Erro: set_tasks requer conteúdo.';
     const uri = _tasksUri();
     if (!uri) return 'Erro: sem workspace aberto.';
-    await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(`# Tis — Tarefas\n\n${args.trim()}\n`));
+    await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(`# TIS.ai — Tarefas\n\n${args.trim()}\n`));
     await appendToActionLog(toolName, null, 'lista actualizada');
     return 'Lista de tarefas actualizada.';
 }
@@ -194,7 +192,7 @@ async function _toolAddTask(toolName, args) {
     const uri = _tasksUri();
     if (!uri) return 'Erro: sem workspace aberto.';
     let existing = await _readTasksFile(uri);
-    if (!existing) existing = '# Tis — Tarefas\n\n';
+    if (!existing) existing = '# TIS.ai — Tarefas\n\n';
     await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(
         existing.trimEnd() + `\n- [ ] ${args.trim()}\n`
     ));
@@ -251,7 +249,7 @@ async function executeTool(toolName, args, content = null) {
 // ─── System prompt para o agente ──────────────────────────────────────────────
 
 /**
- * Retorna o bloco de texto a adicionar ao system prompt do agente Tess
+ * Retorna o bloco de texto a adicionar ao system prompt do agente TIS.ai
  * para activar o protocolo de ferramentas e definir o comportamento esperado.
  */
 function getToolsSystemPrompt() {
@@ -318,7 +316,7 @@ As ferramentas são activadas por tags na resposta. As tags são removidas do te
 | \`[TOOL:write_file:caminho]\` | Criar ficheiro (bloco de código imediatamente antes) |
 | \`[TOOL:edit_file:caminho]\` | Editar ficheiro (bloco de código imediatamente antes) |
 
-## Lista de tarefas (persiste em \`.tess-tasks.md\` no workspace)
+## Lista de tarefas (persiste em \`.tis-tasks.md\` no workspace)
 | Tag | Descrição |
 |-----|-----------|
 | \`[TOOL:get_tasks]\` | Ler lista de tarefas actual |

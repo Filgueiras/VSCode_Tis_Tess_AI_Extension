@@ -1,4 +1,4 @@
-# Guia de Build — Tis Tess
+# Guia de Build — Tis.ai
 
 ## Visão geral do processo
 
@@ -33,7 +33,7 @@ npm version 2.X.Y --no-git-tag-version
 npm run package
 ```
 
-O ficheiro gerado segue o padrão `tis-tess-{version}.vsix`.
+O ficheiro gerado segue o padrão `tis-code-{version}.vsix`.
 
 ---
 
@@ -66,7 +66,7 @@ Usar quando:
 ## Estrutura de ficheiros relevante
 
 ```
-tis-tess/
+tis-code/
 ├── extension.js              # Entry point (source)
 ├── src/
 │   ├── webview/
@@ -115,12 +115,12 @@ O VS Code não substitui versões antigas automaticamente ao instalar via VSIX �
 
 **Windows (PowerShell):**
 ```powershell
-Remove-Item "$env:USERPROFILE\.vscode\extensions\tis-angola.tis-tess-*" -Recurse -Force
+Remove-Item "$env:USERPROFILE\.vscode\extensions\tis-angola.tis-code-*" -Recurse -Force
 ```
 
 **macOS / Linux:**
 ```bash
-rm -rf ~/.vscode/extensions/tis-angola.tis-tess-*
+rm -rf ~/.vscode/extensions/tis-angola.tis-code-*
 ```
 
 Depois reabra o VS Code e instale a versão pretendida via UI (`Ctrl+Shift+P` → Extensions: Install from VSIX).
@@ -197,11 +197,11 @@ npm run install-ext
 
 ```bash
 # macOS / Linux
-unzip -l tis-tess-*.vsix | grep -E "(dist|media)"
+unzip -l tis-code-*.vsix | grep -E "(dist|media)"
 
 # Windows (PowerShell)
-Rename-Item tis-tess-*.vsix tis-tess.zip
-Expand-Archive tis-tess.zip -DestinationPath ./vsix-inspect
+Rename-Item tis-code-*.vsix tis-code.zip
+Expand-Archive tis-code.zip -DestinationPath ./vsix-inspect
 ```
 
 Deve conter `extension/dist/extension.js` e `extension/media/webview/webview.css`.
@@ -216,7 +216,7 @@ Deve conter `extension/dist/extension.js` e `extension/media/webview/webview.css
 | macOS   | `~/.vscode/extensions/` |
 | Linux   | `~/.vscode/extensions/` |
 
-Cada extensão ocupa uma subpasta: `tis-angola.tis-tess-{version}`
+Cada extensão ocupa uma subpasta: `tis-angola.tis-code-{version}`
 
 ---
 

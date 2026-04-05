@@ -60,14 +60,14 @@ async function postWithRetry(url, body, headers, signal) {
 
 function friendlyError(status, fallback) {
     switch (status) {
-        case 401: return 'API Key TisAI inválida ou expirada. Verifique em Definições → tess.tisAiApiKey.';
-        case 403: return 'Sem permissão. Verifique a sua chave TisAI e o assistente configurado.';
-        case 404: return 'Assistente não encontrado. Verifique o ID do assistente TisAI.';
-        case 500: return 'Erro interno do servidor TisAI. Tente novamente em alguns segundos.';
-        case 502: return 'Servidor TisAI inacessível (bad gateway).';
-        case 503: return 'Serviço TisAI temporariamente indisponível.';
-        case 504: return 'O servidor TisAI não respondeu a tempo. Tente com menos contexto ou aguarde.';
-        default:  return fallback ? `Erro ${status}: ${fallback}` : `Erro de ligação TisAI (${status}).`;
+        case 401: return 'API Key TIS.ia inválida ou expirada. Verifique em Definições → tis.tisAiApiKey.';
+        case 403: return 'Sem permissão. Verifique a sua chave TIS.ai e o assistente configurado.';
+        case 404: return 'Assistente não encontrado. Verifique o ID do assistente TIS.ai.';
+        case 500: return 'Erro interno do servidor TIS.ai. Tente novamente em alguns segundos.';
+        case 502: return 'Servidor TIS.ai inacessível (bad gateway).';
+        case 503: return 'Serviço TIS.ai temporariamente indisponível.';
+        case 504: return 'O servidor TIS.ai não respondeu a tempo. Tente com menos contexto ou aguarde.';
+        default:  return fallback ? `Erro ${status}: ${fallback}` : `Erro de ligação TIS.ai (${status}).`;
     }
 }
 
@@ -131,9 +131,9 @@ async function startTisAiStream({ apiKey, assistantId, model, messages, onChunk,
 
             const firstByteTimer = setTimeout(() => {
                 if (!receivedChunk) {
-                    console.warn('[TisAI] Timeout: sem resposta em 30s');
+                    console.warn('[TIS.ai] Timeout: sem resposta em 30s');
                     response.data.destroy();
-                    onError('O modelo TisAI demorou demasiado a responder. Tente novamente.');
+                    onError('O modelo TIS.ai demorou demasiado a responder. Tente novamente.');
                     resolve();
                 }
             }, FIRST_BYTE_LIMIT);
@@ -143,9 +143,9 @@ async function startTisAiStream({ apiKey, assistantId, model, messages, onChunk,
                 clearTimeout(inactivityTimer);
                 inactivityTimer = setTimeout(() => {
                     if (!doneSent) {
-                        console.warn('[TisAI] Timeout de inactividade');
+                        console.warn('[TIS.ai] Timeout de inactividade');
                         response.data.destroy();
-                        onError('A resposta TisAI parou a meio sem terminar. Tente novamente.');
+                        onError('A resposta TIS.ai parou a meio sem terminar. Tente novamente.');
                         resolve();
                     }
                 }, INACTIVITY_LIMIT);
@@ -189,14 +189,14 @@ async function startTisAiStream({ apiKey, assistantId, model, messages, onChunk,
             response.data.on('error', (err) => {
                 clearTimeout(firstByteTimer);
                 clearTimeout(inactivityTimer);
-                console.error('[TisAI] Erro de stream:', err.message);
-                onError(`Erro de ligação TisAI: ${err.message}`);
+                console.error('[TIS.ai] Erro de stream:', err.message);
+                onError(`Erro de ligação TIS.ai: ${err.message}`);
                 resolve();
             });
         });
 
     } catch (err) {
-        console.error('[TisAI] Erro na chamada:', err.message, '| status:', err.response?.status);
+        console.error('[TIS.ai] Erro na chamada:', err.message, '| status:', err.response?.status);
 
         if (axios.isCancel(err) || err.name === 'CanceledError' || err.name === 'AbortError') {
             return;
@@ -209,7 +209,7 @@ async function startTisAiStream({ apiKey, assistantId, model, messages, onChunk,
                 : null;
             onError(friendlyError(status, apiMsg));
         } else {
-            onError(`Sem ligação TisAI ou serviço inacessível: ${err.message}`);
+            onError(`Sem ligação TIS.ai ou serviço inacessível: ${err.message}`);
         }
     } finally {
         _abortController = null;

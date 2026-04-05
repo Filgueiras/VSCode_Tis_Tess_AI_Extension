@@ -67,7 +67,7 @@ function friendlyError(status, fallback) {
         case 502: return 'Servidor Tess inacessível (bad gateway). Verifique tess.im/status.';
         case 503: return 'Serviço Tess temporariamente indisponível. Verifique tess.im/status.';
         case 504: return 'O servidor Tess não respondeu a tempo (504). Tente com menos contexto ou aguarde.';
-        case 524: return 'Timeout do Cloudflare (524) — o servidor demorou demasiado. Tente com menos contexto ou aguarde.';
+        case 524: return 'Timeout do Cloudflare Tess (524) — o servidor demorou demasiado. Tente com menos contexto ou aguarde.';
         default:  return fallback ? `Erro ${status}: ${fallback}` : `Erro de ligação (${status}).`;
     }
 }

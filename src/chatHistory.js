@@ -1,5 +1,5 @@
 // src/chatHistory.js
-// ─── Tess TIS — Chat History Manager ────────────────────────────────────────
+// ─── TIS.ai — Chat History Manager ────────────────────────────────────────
 // Responsabilidade: persistir e gerir o histórico de conversas.
 // Armazena em globalStorageUri/tis_history.json — não polui o workspace.
 // Sessões são associadas ao workspacePath — cada projecto tem o seu contexto.

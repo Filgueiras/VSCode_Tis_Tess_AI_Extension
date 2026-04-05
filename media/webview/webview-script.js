@@ -1,4 +1,4 @@
-// ─── Tess Tis — WebView Script ──────────────────────────────────────────────
+// ─── Tis — WebView Script ──────────────────────────────────────────────
 // Corre dentro do WebView (contexto de browser, sem acesso a Node.js)
 
 const vscode = acquireVsCodeApi();
@@ -749,7 +749,7 @@ function fallbackCopy(text, onSuccess) {
         document.execCommand('copy');
         onSuccess();
     } catch (e) {
-        console.error('[Tess] Falha ao copiar:', e);
+        console.error('[TIS.ai] Falha ao copiar:', e);
     }
     document.body.removeChild(ta);
 }
@@ -767,7 +767,7 @@ function appendMessage(role, content) {
     row.className = 'msg-row ' + role;
     const label  = document.createElement('div');
     label.className   = 'msg-label';
-    label.textContent = role === 'user' ? 'Voc\u00ea' : 'Tess AI';
+    label.textContent = role === 'user' ? 'Voc\u00ea' : 'TIS.ai';
     const bubble = document.createElement('div');
     bubble.className  = 'msg-bubble';
     if (role === 'user') {
@@ -820,7 +820,7 @@ function beginAssistantBubble() {
     row.className = 'msg-row assistant';
     const label  = document.createElement('div');
     label.className   = 'msg-label';
-    label.textContent = 'Tess AI';
+    label.textContent = 'TIS.ai';
     assistantBubble   = document.createElement('div');
     assistantBubble.className = 'msg-bubble';
     assistantBubble.innerHTML = '<span class="thinking">Pensando<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span></span>';
@@ -918,7 +918,7 @@ function finalizeAssistant() {
         updateContextMeter();
 
     } catch (err) {
-        console.error('[Tess] Erro em finalizeAssistant:', err);
+        console.error('[TIS.ai] Erro em finalizeAssistant:', err);
         if (assistantBubble) {
             assistantBubble.closest('.msg-row')?.remove();
             assistantBubble = null;
@@ -1006,8 +1006,24 @@ historyBtn.addEventListener('click', () => {
 modelSelect.addEventListener('change', updateContextMeter);
 
 providerSelect.addEventListener('change', () => {
-    vscode.postMessage({ type: 'providerChanged', provider: providerSelect.value });
+    const provider = providerSelect.value;
+    vscode.postMessage({ type: 'providerChanged', provider });
+    if (history.length > 0) _appendSwitchNotice(provider);
 });
+
+function _appendSwitchNotice(provider) {
+    const labels = { tisai: 'TIS.ai', tess: 'Tess', ollama: 'Ollama (local)', remote: 'Remoto' };
+    const row    = document.createElement('div');
+    row.className = 'msg-row switch-notice';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    const n = history.filter(m => m.role === 'user').length;
+    bubble.textContent = `↕ A continuar com ${labels[provider] ?? provider} — ${n} ${n === 1 ? 'mensagem' : 'mensagens'} de contexto mantidas`;
+    row.appendChild(bubble);
+    document.getElementById('empty')?.remove();
+    messagesEl.appendChild(row);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+}
 
 clearBtn.addEventListener('click', () => {
     history         = [];
@@ -1105,7 +1121,7 @@ window.addEventListener('message', ({ data }) => {
 
         case 'resyncData': {
             if (!data.log) {
-                appendError('Ficheiro .tess-log.md não encontrado. Execute algumas acções com ferramentas primeiro.');
+                appendError('Ficheiro .tis-log.md não encontrado. Execute algumas acções com ferramentas primeiro.');
                 break;
             }
             const logMsg = '[Log de acções anteriores para ressincronização]\n\n' + data.log;
@@ -1165,8 +1181,8 @@ window.addEventListener('message', ({ data }) => {
             contextBtn.disabled = true;
             {
                 const emptyEl = document.getElementById('empty');
-                const msg = 'Configure a sua liga\u00e7\u00e3o \u00e0 Tess antes de continuar.<br>'
-                    + '<small>Ctrl+, \u2192 pesquise <strong>tess</strong> \u2192 preencha <em>API Key</em> e <em>Agent ID</em></small>';
+                const msg = 'Configure a sua liga\u00e7\u00e3o \u00e0 TIS.ai antes de continuar.<br>'
+                    + '<small>Ctrl+, \u2192 pesquise <strong>tis</strong> \u2192 preencha <em>API Key</em> e <em>Agent ID</em></small>';
                 if (emptyEl) {
                     emptyEl.innerHTML = msg;
                 } else {
@@ -1192,7 +1208,7 @@ window.addEventListener('message', ({ data }) => {
                 const banner  = document.getElementById('not-configured-banner');
                 if (banner) banner.remove();
                 const emptyEl = document.getElementById('empty');
-                if (emptyEl) emptyEl.innerHTML = 'Ol\u00e1! Como posso ajudar?<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
+                if (emptyEl) emptyEl.innerHTML = 'Ol\u00e1! Pronto para come\u00e1ar...<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
             }
             if (data.limits) window.MODEL_LIMITS = { ...(window.MODEL_LIMITS || {}), ...data.limits };
             modelRowEl.classList.remove('hidden');

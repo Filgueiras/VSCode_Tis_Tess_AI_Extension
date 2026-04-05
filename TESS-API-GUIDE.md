@@ -352,18 +352,18 @@ A resposta é paginada e inclui para cada agente: `id`, `slug`, `title`, `type`,
 
 ---
 
-## Com o plugin Tess Tis para VS Code
+## Com a extensão Tis.ai para VS Code
 
-Se preferires usar esta funcionalidade directamente no VS Code sem escrever código:
+Se preferires usar a API da Tess directamente no VS Code sem escrever código:
 
-1. Instala a extensão **Tis Tess** (`tis-angola.tess-tis`)
-2. Em `Ctrl+,`, configura `tess.apiKey` e `tess.agentId`
-3. Clica no ícone Tess na barra lateral
+1. Instala a extensão **Tis.ai** (`tis-angola.tis-code`)
+2. Em `Ctrl+,`, configura `tis.tessApiKey` e selecciona Tess como provider
+3. Clica no ícone Tis.ai na barra lateral
 
-A extensão faz exactamente as chamadas documentadas acima, inclui automaticamente o código do editor activo como contexto e suporta streaming em tempo real.
+A extensão suporta múltiplos providers (Tess, TisAI, Ollama, remoto), inclui automaticamente o código do editor activo como contexto e suporta streaming em tempo real.
 
 Consulta o [README](readme.md) para mais detalhes sobre a extensão.
 
 ---
 
-*Documentação gerada para a versão 2.5.1 da extensão Tis-Tess · TIS Angola*
+*Documentação gerada para a versão 5.0.0 da extensão Tis.ai · TIS Angola*

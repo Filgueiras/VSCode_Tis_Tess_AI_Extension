@@ -15160,7 +15160,7 @@ var require_api = __commonJS({
         case 504:
           return "O servidor Tess n\xE3o respondeu a tempo (504). Tente com menos contexto ou aguarde.";
         case 524:
-          return "Timeout do Cloudflare (524) \u2014 o servidor demorou demasiado. Tente com menos contexto ou aguarde.";
+          return "Timeout do Cloudflare Tess (524) \u2014 o servidor demorou demasiado. Tente com menos contexto ou aguarde.";
         default:
           return fallback ? `Erro ${status}: ${fallback}` : `Erro de liga\xE7\xE3o (${status}).`;
       }
@@ -15862,21 +15862,23 @@ var require_webview = __commonJS({
 
   <!-- \u2500\u2500 Toolbar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
   <div id="toolbar">
-    <div id="providerRow">
-      <label>Liga\xE7\xE3o:</label>
-      <select id="providerSelect">
-        <option value="tess">Tess</option>
-        <option value="tisai">TisAI</option>
-        <option value="ollama">Ollama (local)</option>
-        <option value="remote">Remoto</option>
-      </select>
+    <div id="toolbarRow1">
+      <div id="providerRow">
+        <label>Liga\xE7\xE3o:</label>
+        <select id="providerSelect">
+          <option value="tisai">TIS.ai</option>
+          <option value="tess">Tess</option>
+          <option value="ollama">Ollama (local)</option>
+          <option value="remote">Remoto</option>
+        </select>
+      </div>
+      <button class="btn-ghost" id="historyBtn">Hist\xF3rico</button>
+      <button class="btn-ghost" id="clearBtn">Limpar</button>
     </div>
     <div id="modelRow">
       <label>Modelo:</label>
       <select id="modelSelect">${modelOptions}</select>
     </div>
-    <button class="btn-ghost" id="historyBtn">Hist\xF3rico</button>
-    <button class="btn-ghost" id="clearBtn">Limpar</button>
   </div>
 
   <!-- \u2500\u2500 \xC1rea de mensagens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
@@ -15885,7 +15887,7 @@ var require_webview = __commonJS({
       <img src="${logoUri}" alt="TIS">
     </div>
     <div id="empty">
-      Ol\xE1! Como posso ajudar?<br>
+      Ol\xE1! Pronto para come\xE7ar...<br>
       <small>O c\xF3digo do editor activo \xE9 inclu\xEDdo automaticamente.</small>
     </div>
   </div>
@@ -15940,7 +15942,7 @@ var require_tools = __commonJS({
       const argStr = args ? `: ${args}` : "";
       const line = `${status} [${timestamp}] ${toolName}${argStr} \u2192 ${result.split("\n")[0]}
 `;
-      const logUri = vscode2.Uri.joinPath(folders[0].uri, ".tess-log.md");
+      const logUri = vscode2.Uri.joinPath(folders[0].uri, ".tis-log.md");
       let existing = "";
       try {
         const raw = await vscode2.workspace.fs.readFile(logUri);
@@ -15948,7 +15950,7 @@ var require_tools = __commonJS({
       } catch {
       }
       if (!existing) {
-        existing = "# Tess \u2014 Log de Ac\xE7\xF5es\n\n";
+        existing = "# TIS.ai \u2014 Log de Ac\xE7\xF5es\n\n";
       }
       await vscode2.workspace.fs.writeFile(logUri, new TextEncoder().encode(existing + line));
     }
@@ -16050,7 +16052,7 @@ ${lines.join("\n")}`;
     function _tasksUri() {
       const folders = vscode2.workspace.workspaceFolders;
       if (!folders) return null;
-      return vscode2.Uri.joinPath(folders[0].uri, ".tess-tasks.md");
+      return vscode2.Uri.joinPath(folders[0].uri, ".tis-tasks.md");
     }
     async function _readTasksFile(uri) {
       try {
@@ -16071,7 +16073,7 @@ ${lines.join("\n")}`;
       if (!args) return "Erro: set_tasks requer conte\xFAdo.";
       const uri = _tasksUri();
       if (!uri) return "Erro: sem workspace aberto.";
-      await vscode2.workspace.fs.writeFile(uri, new TextEncoder().encode(`# Tis \u2014 Tarefas
+      await vscode2.workspace.fs.writeFile(uri, new TextEncoder().encode(`# TIS.ai \u2014 Tarefas
 
 ${args.trim()}
 `));
@@ -16083,7 +16085,7 @@ ${args.trim()}
       const uri = _tasksUri();
       if (!uri) return "Erro: sem workspace aberto.";
       let existing = await _readTasksFile(uri);
-      if (!existing) existing = "# Tis \u2014 Tarefas\n\n";
+      if (!existing) existing = "# TIS.ai \u2014 Tarefas\n\n";
       await vscode2.workspace.fs.writeFile(uri, new TextEncoder().encode(
         existing.trimEnd() + `
 - [ ] ${args.trim()}
@@ -16195,7 +16197,7 @@ As ferramentas s\xE3o activadas por tags na resposta. As tags s\xE3o removidas d
 | \`[TOOL:write_file:caminho]\` | Criar ficheiro (bloco de c\xF3digo imediatamente antes) |
 | \`[TOOL:edit_file:caminho]\` | Editar ficheiro (bloco de c\xF3digo imediatamente antes) |
 
-## Lista de tarefas (persiste em \`.tess-tasks.md\` no workspace)
+## Lista de tarefas (persiste em \`.tis-tasks.md\` no workspace)
 | Tag | Descri\xE7\xE3o |
 |-----|-----------|
 | \`[TOOL:get_tasks]\` | Ler lista de tarefas actual |

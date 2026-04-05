@@ -52,21 +52,23 @@ function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
 
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
   <div id="toolbar">
-    <div id="providerRow">
-      <label>Ligação:</label>
-      <select id="providerSelect">
-        <option value="tess">Tess</option>
-        <option value="tisai">TisAI</option>
-        <option value="ollama">Ollama (local)</option>
-        <option value="remote">Remoto</option>
-      </select>
+    <div id="toolbarRow1">
+      <div id="providerRow">
+        <label>Ligação:</label>
+        <select id="providerSelect">
+          <option value="tisai">TIS.ai</option>
+          <option value="tess">Tess</option>
+          <option value="ollama">Ollama (local)</option>
+          <option value="remote">Remoto</option>
+        </select>
+      </div>
+      <button class="btn-ghost" id="historyBtn">Histórico</button>
+      <button class="btn-ghost" id="clearBtn">Limpar</button>
     </div>
     <div id="modelRow">
       <label>Modelo:</label>
       <select id="modelSelect">${modelOptions}</select>
     </div>
-    <button class="btn-ghost" id="historyBtn">Histórico</button>
-    <button class="btn-ghost" id="clearBtn">Limpar</button>
   </div>
 
   <!-- ── Área de mensagens ────────────────────────────────────────────────── -->
@@ -75,7 +77,7 @@ function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
       <img src="${logoUri}" alt="TIS">
     </div>
     <div id="empty">
-      Olá! Como posso ajudar?<br>
+      Olá! Pronto para começar...<br>
       <small>O código do editor activo é incluído automaticamente.</small>
     </div>
   </div>

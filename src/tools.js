@@ -1,5 +1,6 @@
+// src/tools.js
 const vscode = require('vscode');
-const { readWorkspaceFile, getWorkspaceTree } = require('./workspace');
+const { readWorkspaceFile, getWorkspaceTree, grepWorkspaceFiles, deleteWorkspaceFile } = require('./workspace');
 
 // ─── Log local de acções ───────────────────────────────────────────────────────
 
@@ -30,10 +31,6 @@ async function appendToActionLog(toolName, args, result) {
 
 // ─── Protocolo de ferramentas ──────────────────────────────────────────────────
 // Formato: [TOOL:nome_ferramenta:argumento_opcional]
-// Exemplos:
-//   [TOOL:get_tree]
-//   [TOOL:get_file:src/extension.js]
-//   [TOOL:write_file:src/test.js:conteudo]
 
 const TOOL_REGEX = /\[TOOL:(\w+)(?::([^\]]+))?\]/g;
 
@@ -68,13 +65,6 @@ async function executeToolCalls(text, view) {
     return { cleanText, hasTools: true };
 }
 
-/**
- * Executa uma ferramenta específica e retorna o resultado formatado.
- * @param {string} toolName - Nome da ferramenta
- * @param {string|null} args - Argumentos da ferramenta (caminho para write/edit_file)
- * @param {string|null} [content] - Conteúdo do ficheiro (extraído do bloco de código anterior)
- * @returns {Promise<string>} Resultado formatado para injectar no histórico
- */
 // ─── Handlers individuais por ferramenta ──────────────────────────────────────
 
 async function _toolGetTree(toolName, args) {
@@ -86,14 +76,69 @@ async function _toolGetTree(toolName, args) {
 
 async function _toolGetFile(toolName, args) {
     if (!args) return 'Erro: get_file requer um caminho de ficheiro.';
-    const { error, content, language, path: filePath } = await readWorkspaceFile(args);
+
+    // Detectar range opcional: get_file:caminho:startLine:endLine
+    const parts = args.split(':');
+    let filePath, startLine, endLine;
+
+    if (parts.length >= 3) {
+        const maybeEnd   = parseInt(parts[parts.length - 1], 10);
+        const maybeStart = parseInt(parts[parts.length - 2], 10);
+        if (!isNaN(maybeStart) && !isNaN(maybeEnd) && maybeStart > 0 && maybeEnd > 0) {
+            filePath  = parts.slice(0, -2).join(':');
+            startLine = maybeStart;
+            endLine   = maybeEnd;
+        }
+    }
+
+    if (!filePath) filePath = args;
+
+    if (startLine && endLine) {
+        const { error, content, language, path: fPath, meta } = await readWorkspaceFile(filePath, startLine, endLine);
+        if (error) {
+            const result = `Erro ao ler "${filePath}": ${error}`;
+            await appendToActionLog(toolName, args, result);
+            return result;
+        }
+        await appendToActionLog(toolName, args, `lido com range (${meta})`);
+        return `\`\`\`${language}\n// ${fPath} (${meta})\n${content}\n\`\`\``;
+    }
+
+    // Comportamento original (sem range)
+    const { error, content, language, path: fPath } = await readWorkspaceFile(filePath);
     if (error) {
-        const result = `Erro ao ler "${args}": ${error}`;
+        const result = `Erro ao ler "${filePath}": ${error}`;
         await appendToActionLog(toolName, args, result);
         return result;
     }
     await appendToActionLog(toolName, args, 'lido com sucesso');
-    return `\`\`\`${language}\n// ${filePath}\n${content}\n\`\`\``;
+    return `\`\`\`${language}\n// ${fPath}\n${content}\n\`\`\``;
+}
+
+async function _toolGrepFile(toolName, args) {
+    if (!args) return 'Erro: grep_file requer pelo menos um padrão. Formato: grep_file:padrão ou grep_file:padrão:caminho';
+
+    const sepIndex = args.indexOf(':');
+    const pattern  = sepIndex === -1 ? args : args.slice(0, sepIndex);
+    const target   = sepIndex === -1 ? ''   : args.slice(sepIndex + 1);
+
+    const { error, results } = await grepWorkspaceFiles(pattern, target);
+
+    if (error) {
+        await appendToActionLog(toolName, args, error);
+        return error;
+    }
+
+    if (results.length === 0) {
+        const msg = `Nenhum resultado para "${pattern}"${target ? ` em ${target}` : ''}.`;
+        await appendToActionLog(toolName, args, msg);
+        return msg;
+    }
+
+    const formatted = results.map(r => `${r.file}:${r.line}: ${r.text}`).join('\n');
+    const summary   = `${results.length} resultado(s)${results.length >= 50 ? ' (limite atingido)' : ''}`;
+    await appendToActionLog(toolName, args, summary);
+    return `Resultados para "${pattern}"${target ? ` em ${target}` : ''}:\n\n${formatted}`;
 }
 
 async function _toolWriteFile(toolName, args, content) {
@@ -135,6 +180,13 @@ async function _toolWriteFile(toolName, args, content) {
         await appendToActionLog(toolName, filePath, result);
         return result;
     }
+}
+
+async function _toolDeleteFile(toolName, args) {
+    if (!args) return 'Erro: delete_file requer o caminho do ficheiro.';
+    const result = await deleteWorkspaceFile(args.trim());
+    await appendToActionLog(toolName, args, result);
+    return result;
 }
 
 async function _toolListDir(toolName, args = '') {
@@ -226,15 +278,17 @@ async function _toolDoneTask(toolName, args) {
 // ─── Dispatcher de ferramentas ────────────────────────────────────────────────
 
 const TOOL_HANDLERS = {
-    get_tree:  (n, a)    => _toolGetTree(n, a),
-    get_file:  (n, a)    => _toolGetFile(n, a),
-    write_file:(n, a, c) => _toolWriteFile(n, a, c),
-    edit_file: (n, a, c) => _toolWriteFile(n, a, c),
-    list_dir:  (n, a)    => _toolListDir(n, a),
-    get_tasks: (n)       => _toolGetTasks(n),
-    set_tasks: (n, a)    => _toolSetTasks(n, a),
-    add_task:  (n, a)    => _toolAddTask(n, a),
-    done_task: (n, a)    => _toolDoneTask(n, a),
+    get_tree:    (n, a)    => _toolGetTree(n, a),
+    get_file:    (n, a)    => _toolGetFile(n, a),
+    grep_file:   (n, a)    => _toolGrepFile(n, a),
+    write_file:  (n, a, c) => _toolWriteFile(n, a, c),
+    edit_file:   (n, a, c) => _toolWriteFile(n, a, c),
+    delete_file: (n, a)    => _toolDeleteFile(n, a),
+    list_dir:    (n, a)    => _toolListDir(n, a),
+    get_tasks:   (n)       => _toolGetTasks(n),
+    set_tasks:   (n, a)    => _toolSetTasks(n, a),
+    add_task:    (n, a)    => _toolAddTask(n, a),
+    done_task:   (n, a)    => _toolDoneTask(n, a),
 };
 
 async function executeTool(toolName, args, content = null) {
@@ -248,10 +302,6 @@ async function executeTool(toolName, args, content = null) {
 
 // ─── System prompt para o agente ──────────────────────────────────────────────
 
-/**
- * Retorna o bloco de texto a adicionar ao system prompt do agente TIS.ai
- * para activar o protocolo de ferramentas e definir o comportamento esperado.
- */
 function getToolsSystemPrompt() {
     return `
 # Contexto de execução — VS Code (Tis.ai Hypercoding)
@@ -311,12 +361,16 @@ As ferramentas são activadas por tags na resposta. As tags são removidas do te
 | Tag | Descrição |
 |-----|-----------|
 | \`[TOOL:get_tree]\` | Estrutura completa do projecto |
-| \`[TOOL:get_file:caminho]\` | Ler ficheiro |
+| \`[TOOL:get_file:caminho]\` | Ler ficheiro completo |
+| \`[TOOL:get_file:caminho:inicio:fim]\` | Ler range de linhas (1-based, inclusive) |
+| \`[TOOL:grep_file:padrão]\` | Pesquisar texto em todo o projecto |
+| \`[TOOL:grep_file:padrão:caminho]\` | Pesquisar texto num ficheiro ou pasta |
 | \`[TOOL:list_dir:caminho]\` | Listar directoria |
 | \`[TOOL:write_file:caminho]\` | Criar ficheiro (bloco de código imediatamente antes) |
 | \`[TOOL:edit_file:caminho]\` | Editar ficheiro (bloco de código imediatamente antes) |
+| \`[TOOL:delete_file:caminho]\` | Apagar ficheiro (pede confirmação modal) |
 
-## Lista de tarefas (persiste em \`.tis-tasks.md\` no workspace)
+## Lista de tarefas (persiste em .tis-tasks.md no workspace)
 | Tag | Descrição |
 |-----|-----------|
 | \`[TOOL:get_tasks]\` | Ler lista de tarefas actual |
@@ -324,8 +378,13 @@ As ferramentas são activadas por tags na resposta. As tags são removidas do te
 | \`[TOOL:add_task:descrição]\` | Adicionar tarefa pendente |
 | \`[TOOL:done_task:descrição]\` | Marcar tarefa como concluída |
 
+## Pesquisa eficiente em ficheiros grandes
+Quando um ficheiro é truncado (>50K chars), usa esta estratégia:
+1. grep_file com o padrão e caminho para localizar a zona de interesse
+2. get_file com caminho, linha inicial e linha final para ler apenas as linhas relevantes
+
 Usa a lista de tarefas em trabalho multi-passo: cria-a no início, actualiza ao longo do processo.
-Ao retomar trabalho, começa por \`[TOOL:get_tasks]\` para ver o estado actual.
+Ao retomar trabalho, começa por get_tasks para ver o estado actual.
 `.trim();
 }
 

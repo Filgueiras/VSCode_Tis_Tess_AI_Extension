@@ -407,7 +407,7 @@ Lista as 3 coisas mais importantes a corrigir, por ordem de impacto.`;
             this._view.webview.postMessage({ type: 'resyncData', log: null });
             return;
         }
-        const logUri = vscode.Uri.joinPath(folders[0].uri, '.tess-log.md');
+        const logUri = vscode.Uri.joinPath(folders[0].uri, '.tis-log.md');
         try {
             const raw = await vscode.workspace.fs.readFile(logUri);
             this._view.webview.postMessage({ type: 'resyncData', log: new TextDecoder().decode(raw) });

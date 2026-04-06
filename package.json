@@ -1,14 +1,14 @@
 {
   "name": "tis-code",
-  "displayName": "Tis.ai",
-  "description": "Assistente de código com IA para VS Code — powered by TIS, com suporte a Tess.im e TisAI",
-  "version": "5.0.0",
+  "displayName": "TIS.ai",
+  "description": "Assistente Hypercoding para VS Code — powered by TIS, com suporte a TIS, Tess.im, Ollama e OpenAI Std",
+  "version": "5.1.0",
   "publisher": "tis-angola",
   "author": {
     "name": "Marco A. F. Guimarães",
     "url": "https://tis.ao"
   },
-  "icon": "icon-tis-tess.png",
+  "icon": "icon-TIS-ai_150px.png",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -51,7 +51,7 @@
         {
           "type": "webview",
           "id": "tis.chatView",
-          "name": "Chat Tis.ai",
+          "name": "Chat TIS.ai",
           "icon": "TIS_vector_vscode.svg"
         }
       ]
@@ -82,14 +82,14 @@
           "tis.tisAiApiKey": {
             "type": "string",
             "default": "",
-            "description": "Chave API para o TisAI (ai.tisdev.cloud). Obtenha no painel TisAI em Nova Chave.",
-            "markdownDescription": "Chave API para o **TisAI** (`ai.tisdev.cloud`). Obtenha no painel TisAI clicando em **Nova Chave**. Formato: `tis_...`"
+            "description": "Chave API para o TIS.ai (ai.tisdev.cloud). Obtenha no painel TIS.ai em Nova Chave.",
+            "markdownDescription": "Chave API para **TIS.ai** (`ai.tisdev.cloud`). Obtenha no painel TIS.ai clicando em **Nova Chave**. Formato: `tis_...`"
           },
           "tis.tisAiAssistantId": {
             "type": "string",
             "default": "",
-            "description": "(Opcional) ID numérico do assistente TisAI a usar nas chamadas.",
-            "markdownDescription": "(Opcional) ID numérico do assistente TisAI. Quando definido, as chamadas incluem `assistant_id` no corpo do pedido."
+            "description": "(Opcional) ID numérico do assistente TIS.ai a usar nas chamadas.",
+            "markdownDescription": "(Opcional) ID numérico do assistente TIS.ai. Quando definido, as chamadas incluem `assistant_id` no corpo do pedido."
           }
         }
       },

@@ -15864,7 +15864,7 @@ var require_webview = __commonJS({
   <div id="toolbar">
     <div id="toolbarRow1">
       <div id="providerRow">
-        <label>Liga\xE7\xE3o:</label>
+        <label>Provedor:</label>
         <select id="providerSelect">
           <option value="tisai">TIS.ai</option>
           <option value="tess">Tess</option>
@@ -16742,7 +16742,7 @@ Lista as 3 coisas mais importantes a corrigir, por ordem de impacto.`;
           this._view.webview.postMessage({ type: "resyncData", log: null });
           return;
         }
-        const logUri = vscode2.Uri.joinPath(folders[0].uri, ".tess-log.md");
+        const logUri = vscode2.Uri.joinPath(folders[0].uri, ".tis-log.md");
         try {
           const raw = await vscode2.workspace.fs.readFile(logUri);
           this._view.webview.postMessage({ type: "resyncData", log: new TextDecoder().decode(raw) });

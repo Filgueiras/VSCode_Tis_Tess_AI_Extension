@@ -54,7 +54,7 @@ function buildHtml(webview, extensionUri, models = [], modelLimits = {}) {
   <div id="toolbar">
     <div id="toolbarRow1">
       <div id="providerRow">
-        <label>Ligação:</label>
+        <label>Provedor:</label>
         <select id="providerSelect">
           <option value="tisai">TIS.ai</option>
           <option value="tess">Tess</option>

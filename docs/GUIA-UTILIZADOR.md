@@ -233,7 +233,7 @@ O agente pode interagir com ficheiros do projecto de forma autónoma.
 
 ### Log local de acções
 
-Todas as operações são registadas em `.tess-log.md` na raiz do workspace:
+Todas as operações são registadas em `.tis-log.md` na raiz do workspace:
 
 ```
 ✅ [2026-04-05 10:12:01] get_file: src/api.js → lido com sucesso
@@ -241,7 +241,7 @@ Todas as operações são registadas em `.tess-log.md` na raiz do workspace:
 ❌ [2026-04-05 10:13:10] write_file: src/test.js → Operação cancelada pelo utilizador
 ```
 
-> Recomendação: adicione `.tess-log.md` ao `.gitignore`.
+> Recomendação: adicione `.tis-log.md` ao `.gitignore`.
 
 ---
 
@@ -257,7 +257,7 @@ Quando ocorre perda de sincronia (ligação interrompida, timeout durante tool c
 
 ### Botão 🔄 Log Ressinc
 
-1. A extensão lê `.tess-log.md`
+1. A extensão lê `.tis-log.md`
 2. Injeta o log no chat como contexto
 3. O agente retoma a partir do ponto de interrupção
 
@@ -302,7 +302,7 @@ Clique direito em qualquer ficheiro ou selecção → **Tis: Chat com Código Ac
 | Resposta parou a meio | Timeout ou erro de rede | Clique **Parar** e tente novamente |
 | Aviso ⚠️ de dessincronia | Stream interrompido durante tool calls | Clique **🔄 Log Ressinc** |
 | UI bloqueada sem resposta (raro) | Dessincronia não detectada | Watchdog de 45s desbloqueará; use **🔄 Log Ressinc** depois |
-| `.tess-log.md` não é criado | Sem workspace aberto | Abra uma pasta no VS Code |
+| `.tis-log.md` não é criado | Sem workspace aberto | Abra uma pasta no VS Code |
 | Painel não aparece | Vista oculta | `View → Open View… → Chat Tis.ai` |
 | Token Tess expirado | Token revogado | Novo token em [tess.im/dashboard/user/tokens](https://tess.im/dashboard/user/tokens) → actualizar `tis.tessApiKey` |
 

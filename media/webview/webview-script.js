@@ -761,13 +761,20 @@ function removeEmpty() {
     if (e) e.remove();
 }
 
+function _assistantLabel() {
+    const providerNames = { tisai: 'TIS.ai', tess: 'Tess', ollama: 'Ollama', remote: 'Remoto' };
+    const pName  = providerNames[providerSelect.value] ?? providerSelect.value;
+    const mLabel = modelSelect.options[modelSelect.selectedIndex]?.text;
+    return mLabel ? `${pName} · ${mLabel}` : pName;
+}
+
 function appendMessage(role, content) {
     removeEmpty();
     const row    = document.createElement('div');
     row.className = 'msg-row ' + role;
     const label  = document.createElement('div');
     label.className   = 'msg-label';
-    label.textContent = role === 'user' ? 'Voc\u00ea' : 'TIS.ai';
+    label.textContent = role === 'user' ? 'Voc\u00ea' : _assistantLabel();
     const bubble = document.createElement('div');
     bubble.className  = 'msg-bubble';
     if (role === 'user') {
@@ -820,7 +827,7 @@ function beginAssistantBubble() {
     row.className = 'msg-row assistant';
     const label  = document.createElement('div');
     label.className   = 'msg-label';
-    label.textContent = 'TIS.ai';
+    label.textContent = _assistantLabel();
     assistantBubble   = document.createElement('div');
     assistantBubble.className = 'msg-bubble';
     assistantBubble.innerHTML = '<span class="thinking">Pensando<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span></span>';

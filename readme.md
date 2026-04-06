@@ -43,7 +43,7 @@ A IA executa, o humano decide. O assistente pode ler e propor; só altera o que 
 - **Histórico por workspace** — cada projecto tem as suas próprias conversas
 - **Tool calling com confirmação** — leitura autónoma; escrita requer aprovação explícita
 - **Feedback visual de operações** — cada acção aparece no chat em tempo real
-- **Log local de acções** — registo cumulativo em `.tess-log.md` no workspace
+- **Log local de acções** — registo cumulativo em `.tis-log.md` no workspace
 - **Ressincronização de sessão** — detecção automática de perda de sincronia e recuperação via log
 - **Medidor de contexto** — tokens consumidos em tempo real com aviso de proximidade ao limite
 - **Modelos dinâmicos** — lista actualizada via API para Tess e TisAI; descoberta automática para Ollama
@@ -125,7 +125,7 @@ O agente pode interagir com os ficheiros do projecto:
 | Ler ficheiro / listar directoria / ver estrutura | Não |
 | Criar ou editar ficheiro | **Sim** — diálogo modal |
 
-Todas as operações ficam registadas em `.tess-log.md`. Se a ligação cair durante uma sequência, o botão **🔄 Log Ressinc** injeta o log no chat para o agente retomar.
+Todas as operações ficam registadas em `.tis-log.md`. Se a ligação cair durante uma sequência, o botão **🔄 Log Ressinc** injeta o log no chat para o agente retomar.
 
 ---
 

@@ -1040,7 +1040,7 @@ clearBtn.addEventListener('click', () => {
     const emptyDiv = document.createElement('div');
     emptyDiv.id = 'empty';
     emptyDiv.style.cssText = 'margin:auto;text-align:center;color:var(--vscode-descriptionForeground);font-size:13px;line-height:2';
-    emptyDiv.innerHTML = 'Ol\u00e1! Como posso ajudar?<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
+    emptyDiv.innerHTML = 'Ol\u00e1! Pronto para come\u00e7ar...<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
     messagesEl.appendChild(emptyDiv);
     watermarkEl.classList.remove('hidden');
     setWaiting(false);
@@ -1215,7 +1215,7 @@ window.addEventListener('message', ({ data }) => {
                 const banner  = document.getElementById('not-configured-banner');
                 if (banner) banner.remove();
                 const emptyEl = document.getElementById('empty');
-                if (emptyEl) emptyEl.innerHTML = 'Ol\u00e1! Pronto para come\u00e1ar...<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
+                if (emptyEl) emptyEl.innerHTML = 'Ol\u00e1! Pronto para come\u00e7ar...<br><small>O c\u00f3digo do editor activo \u00e9 inclu\u00eddo automaticamente.</small>';
             }
             if (data.limits) window.MODEL_LIMITS = { ...(window.MODEL_LIMITS || {}), ...data.limits };
             modelRowEl.classList.remove('hidden');

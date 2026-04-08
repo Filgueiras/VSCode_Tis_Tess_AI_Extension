@@ -15731,6 +15731,7 @@ var require_workspace = __commonJS({
     var EXCLUDE_PATTERN = "{**/node_modules/**,**/.git/**,**/.claude/**,**/*.vsix,**/out/**,**/dist/**,**/.vscode/**,**/coverage/**,**/__pycache__/**}";
     var MAX_FILES = 300;
     var MAX_FILE_CHARS = 5e4;
+    var MAX_GREP_RESULTS = 50;
     async function getWorkspaceTree() {
       const folders = vscode2.workspace.workspaceFolders;
       if (!folders || folders.length === 0) return null;
@@ -15742,7 +15743,7 @@ var require_workspace = __commonJS({
       return `Ficheiros do projecto (${path.basename(rootPath)}):
 ${lines.join("\n")}`;
     }
-    async function readWorkspaceFile(relativePath) {
+    async function readWorkspaceFile(relativePath, startLine, endLine) {
       try {
         const folders = vscode2.workspace.workspaceFolders;
         if (!folders || folders.length === 0) {
@@ -15752,18 +15753,114 @@ ${lines.join("\n")}`;
         const doc = await vscode2.workspace.openTextDocument(fullUri);
         const content = doc.getText();
         const language = doc.languageId;
+        if (startLine != null && endLine != null) {
+          const allLines = content.split("\n");
+          const totalLines = allLines.length;
+          const start = Math.max(1, startLine);
+          const end = Math.min(totalLines, endLine);
+          const selected = allLines.slice(start - 1, end).join("\n");
+          return {
+            content: selected,
+            language,
+            path: relativePath,
+            error: null,
+            meta: `Linhas ${start}-${end} de ${totalLines}`
+          };
+        }
         if (content.length > MAX_FILE_CHARS) {
           const truncated = content.split("\n").slice(0, 200).join("\n");
           return {
             content: truncated,
             language,
             path: relativePath,
-            error: `Ficheiro truncado \u2014 tamanho original: ${content.length} chars. A mostrar as primeiras 200 linhas.`
+            error: `Ficheiro truncado \u2014 tamanho original: ${content.length} chars (${content.split("\n").length} linhas). A mostrar as primeiras 200 linhas. Usa grep_file para localizar sec\xE7\xF5es e get_file com range para ler blocos espec\xEDficos.`
           };
         }
         return { content, language, path: relativePath, error: null };
       } catch (err) {
         return { error: `Erro ao ler ficheiro: ${err.message}`, content: null, language: null, path: relativePath };
+      }
+    }
+    async function grepWorkspaceFiles(pattern, targetPath = "") {
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders) return { error: "Sem workspace aberto.", results: [] };
+      let regex;
+      try {
+        regex = new RegExp(pattern, "i");
+      } catch (err) {
+        return { error: `Padr\xE3o regex inv\xE1lido: ${err.message}`, results: [] };
+      }
+      const rootUri = folders[0].uri;
+      const rootPath = rootUri.fsPath.replaceAll("\\", "/");
+      const results = [];
+      let filesToSearch = [];
+      if (targetPath) {
+        const targetUri = vscode2.Uri.joinPath(rootUri, targetPath);
+        let stat;
+        try {
+          stat = await vscode2.workspace.fs.stat(targetUri);
+        } catch {
+          return { error: `Caminho n\xE3o encontrado: ${targetPath}`, results: [] };
+        }
+        if (stat.type === vscode2.FileType.File) {
+          filesToSearch = [targetUri];
+        } else if (stat.type === vscode2.FileType.Directory) {
+          const globPattern = new vscode2.RelativePattern(targetUri, "**/*");
+          filesToSearch = await vscode2.workspace.findFiles(globPattern, EXCLUDE_PATTERN, MAX_FILES);
+        }
+      } else {
+        filesToSearch = await vscode2.workspace.findFiles("**/*", EXCLUDE_PATTERN, MAX_FILES);
+      }
+      for (const fileUri of filesToSearch) {
+        if (results.length >= MAX_GREP_RESULTS) break;
+        try {
+          const doc = await vscode2.workspace.openTextDocument(fileUri);
+          const text = doc.getText();
+          const lines = text.split("\n");
+          const relPath = fileUri.fsPath.replaceAll("\\", "/").replace(rootPath + "/", "");
+          for (let i = 0; i < lines.length; i++) {
+            if (regex.test(lines[i])) {
+              results.push({
+                file: relPath,
+                line: i + 1,
+                text: lines[i].trimEnd()
+              });
+              if (results.length >= MAX_GREP_RESULTS) break;
+            }
+          }
+        } catch {
+        }
+      }
+      return { error: null, results };
+    }
+    async function deleteWorkspaceFile(relativePath) {
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders) return "Erro: sem workspace aberto.";
+      const normalised = path.normalize(relativePath);
+      if (normalised.startsWith("..") || path.isAbsolute(normalised)) {
+        return "Erro: caminho inv\xE1lido \u2014 n\xE3o \xE9 permitido apagar ficheiros fora do workspace.";
+      }
+      const uri = vscode2.Uri.joinPath(folders[0].uri, relativePath);
+      try {
+        await vscode2.workspace.fs.stat(uri);
+      } catch {
+        return `Erro: ficheiro n\xE3o encontrado: ${relativePath}`;
+      }
+      const confirmed = await vscode2.window.showWarningMessage(
+        `Tis quer APAGAR: ${relativePath}
+Esta ac\xE7\xE3o \xE9 irrevers\xEDvel.`,
+        { modal: true },
+        "Apagar",
+        "Cancelar"
+      );
+      if (confirmed !== "Apagar") {
+        return `Opera\xE7\xE3o cancelada pelo utilizador: ${relativePath}`;
+      }
+      try {
+        await vscode2.workspace.fs.delete(uri);
+        return `Ficheiro apagado com sucesso: ${relativePath}`;
+      } catch (err) {
+        return `Erro ao apagar ficheiro: ${err.message}`;
       }
     }
     async function pickWorkspaceFiles(view) {
@@ -15814,6 +15911,8 @@ ${lines.join("\n")}`;
     module2.exports = {
       getWorkspaceTree,
       readWorkspaceFile,
+      grepWorkspaceFiles,
+      deleteWorkspaceFile,
       pickWorkspaceFiles,
       sendWorkspaceContext,
       getCurrentCode
@@ -15932,7 +16031,7 @@ var require_webview = __commonJS({
 var require_tools = __commonJS({
   "src/tools.js"(exports2, module2) {
     var vscode2 = require("vscode");
-    var { readWorkspaceFile, getWorkspaceTree } = require_workspace();
+    var { readWorkspaceFile, getWorkspaceTree, grepWorkspaceFiles, deleteWorkspaceFile } = require_workspace();
     async function appendToActionLog(toolName, args, result) {
       const folders = vscode2.workspace.workspaceFolders;
       if (!folders) return;
@@ -15979,17 +16078,64 @@ var require_tools = __commonJS({
     }
     async function _toolGetFile(toolName, args) {
       if (!args) return "Erro: get_file requer um caminho de ficheiro.";
-      const { error, content, language, path: filePath } = await readWorkspaceFile(args);
+      const parts = args.split(":");
+      let filePath, startLine, endLine;
+      if (parts.length >= 3) {
+        const maybeEnd = parseInt(parts[parts.length - 1], 10);
+        const maybeStart = parseInt(parts[parts.length - 2], 10);
+        if (!isNaN(maybeStart) && !isNaN(maybeEnd) && maybeStart > 0 && maybeEnd > 0) {
+          filePath = parts.slice(0, -2).join(":");
+          startLine = maybeStart;
+          endLine = maybeEnd;
+        }
+      }
+      if (!filePath) filePath = args;
+      if (startLine && endLine) {
+        const { error: error2, content: content2, language: language2, path: fPath2, meta } = await readWorkspaceFile(filePath, startLine, endLine);
+        if (error2) {
+          const result = `Erro ao ler "${filePath}": ${error2}`;
+          await appendToActionLog(toolName, args, result);
+          return result;
+        }
+        await appendToActionLog(toolName, args, `lido com range (${meta})`);
+        return `\`\`\`${language2}
+// ${fPath2} (${meta})
+${content2}
+\`\`\``;
+      }
+      const { error, content, language, path: fPath } = await readWorkspaceFile(filePath);
       if (error) {
-        const result = `Erro ao ler "${args}": ${error}`;
+        const result = `Erro ao ler "${filePath}": ${error}`;
         await appendToActionLog(toolName, args, result);
         return result;
       }
       await appendToActionLog(toolName, args, "lido com sucesso");
       return `\`\`\`${language}
-// ${filePath}
+// ${fPath}
 ${content}
 \`\`\``;
+    }
+    async function _toolGrepFile(toolName, args) {
+      if (!args) return "Erro: grep_file requer pelo menos um padr\xE3o. Formato: grep_file:padr\xE3o ou grep_file:padr\xE3o:caminho";
+      const sepIndex = args.indexOf(":");
+      const pattern = sepIndex === -1 ? args : args.slice(0, sepIndex);
+      const target = sepIndex === -1 ? "" : args.slice(sepIndex + 1);
+      const { error, results } = await grepWorkspaceFiles(pattern, target);
+      if (error) {
+        await appendToActionLog(toolName, args, error);
+        return error;
+      }
+      if (results.length === 0) {
+        const msg = `Nenhum resultado para "${pattern}"${target ? ` em ${target}` : ""}.`;
+        await appendToActionLog(toolName, args, msg);
+        return msg;
+      }
+      const formatted = results.map((r) => `${r.file}:${r.line}: ${r.text}`).join("\n");
+      const summary = `${results.length} resultado(s)${results.length >= 50 ? " (limite atingido)" : ""}`;
+      await appendToActionLog(toolName, args, summary);
+      return `Resultados para "${pattern}"${target ? ` em ${target}` : ""}:
+
+${formatted}`;
     }
     async function _toolWriteFile(toolName, args, content) {
       if (!args) return `Erro: ${toolName} requer o caminho do ficheiro.`;
@@ -16028,6 +16174,12 @@ ${content}
         await appendToActionLog(toolName, filePath, result);
         return result;
       }
+    }
+    async function _toolDeleteFile(toolName, args) {
+      if (!args) return "Erro: delete_file requer o caminho do ficheiro.";
+      const result = await deleteWorkspaceFile(args.trim());
+      await appendToActionLog(toolName, args, result);
+      return result;
     }
     async function _toolListDir(toolName, args = "") {
       const dirPath = args;
@@ -16117,8 +16269,10 @@ ${args.trim()}
     var TOOL_HANDLERS = {
       get_tree: (n, a) => _toolGetTree(n, a),
       get_file: (n, a) => _toolGetFile(n, a),
+      grep_file: (n, a) => _toolGrepFile(n, a),
       write_file: (n, a, c) => _toolWriteFile(n, a, c),
       edit_file: (n, a, c) => _toolWriteFile(n, a, c),
+      delete_file: (n, a) => _toolDeleteFile(n, a),
       list_dir: (n, a) => _toolListDir(n, a),
       get_tasks: (n) => _toolGetTasks(n),
       set_tasks: (n, a) => _toolSetTasks(n, a),
@@ -16192,12 +16346,16 @@ As ferramentas s\xE3o activadas por tags na resposta. As tags s\xE3o removidas d
 | Tag | Descri\xE7\xE3o |
 |-----|-----------|
 | \`[TOOL:get_tree]\` | Estrutura completa do projecto |
-| \`[TOOL:get_file:caminho]\` | Ler ficheiro |
+| \`[TOOL:get_file:caminho]\` | Ler ficheiro completo |
+| \`[TOOL:get_file:caminho:inicio:fim]\` | Ler range de linhas (1-based, inclusive) |
+| \`[TOOL:grep_file:padr\xE3o]\` | Pesquisar texto em todo o projecto |
+| \`[TOOL:grep_file:padr\xE3o:caminho]\` | Pesquisar texto num ficheiro ou pasta |
 | \`[TOOL:list_dir:caminho]\` | Listar directoria |
 | \`[TOOL:write_file:caminho]\` | Criar ficheiro (bloco de c\xF3digo imediatamente antes) |
 | \`[TOOL:edit_file:caminho]\` | Editar ficheiro (bloco de c\xF3digo imediatamente antes) |
+| \`[TOOL:delete_file:caminho]\` | Apagar ficheiro (pede confirma\xE7\xE3o modal) |
 
-## Lista de tarefas (persiste em \`.tis-tasks.md\` no workspace)
+## Lista de tarefas (persiste em .tis-tasks.md no workspace)
 | Tag | Descri\xE7\xE3o |
 |-----|-----------|
 | \`[TOOL:get_tasks]\` | Ler lista de tarefas actual |
@@ -16205,8 +16363,13 @@ As ferramentas s\xE3o activadas por tags na resposta. As tags s\xE3o removidas d
 | \`[TOOL:add_task:descri\xE7\xE3o]\` | Adicionar tarefa pendente |
 | \`[TOOL:done_task:descri\xE7\xE3o]\` | Marcar tarefa como conclu\xEDda |
 
+## Pesquisa eficiente em ficheiros grandes
+Quando um ficheiro \xE9 truncado (>50K chars), usa esta estrat\xE9gia:
+1. grep_file com o padr\xE3o e caminho para localizar a zona de interesse
+2. get_file com caminho, linha inicial e linha final para ler apenas as linhas relevantes
+
 Usa a lista de tarefas em trabalho multi-passo: cria-a no in\xEDcio, actualiza ao longo do processo.
-Ao retomar trabalho, come\xE7a por \`[TOOL:get_tasks]\` para ver o estado actual.
+Ao retomar trabalho, come\xE7a por get_tasks para ver o estado actual.
 `.trim();
     }
     module2.exports = { executeToolCalls, executeTool, getToolsSystemPrompt };

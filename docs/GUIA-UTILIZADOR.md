@@ -1,6 +1,6 @@
 # Guia do Utilizador — Tis.ai para VS Code
 
-> Versão 5.0.0 · Hypercoding Multi-IA
+> Versão 5.3.0 · Hypercoding Multi-IA
 
 ---
 
@@ -16,10 +16,11 @@
 8. [Auditoria Hypercoding](#8-auditoria-hypercoding)
 9. [Medidor de contexto](#9-medidor-de-contexto)
 10. [Operações de ficheiros (tool calling)](#10-operações-de-ficheiros-tool-calling)
-11. [Ressincronização de sessão](#11-ressincronização-de-sessão)
-12. [Sessões persistentes e histórico](#12-sessões-persistentes-e-histórico)
-13. [Atalhos e menu de contexto](#13-atalhos-e-menu-de-contexto)
-14. [Resolução de problemas](#14-resolução-de-problemas)
+11. [Guardião de actividade real](#11-guardião-de-actividade-real)
+12. [Ressincronização de sessão](#12-ressincronização-de-sessão)
+13. [Sessões persistentes e histórico](#13-sessões-persistentes-e-histórico)
+14. [Atalhos e menu de contexto](#14-atalhos-e-menu-de-contexto)
+15. [Resolução de problemas](#15-resolução-de-problemas)
 
 ---
 
@@ -217,16 +218,44 @@ O agente pode interagir com ficheiros do projecto de forma autónoma.
 
 ### Operações disponíveis
 
-| Operação | Confirmação |
-|---|---|
-| Ver estrutura / ler ficheiro / listar directoria | Não |
-| Criar ficheiro | **Sim** |
-| Editar ficheiro | **Sim** |
+| Operação | Confirmação | Notas |
+|---|---|---|
+| Ver estrutura / ler ficheiro / listar directoria | Não | |
+| Abrir ficheiro no editor | Não | Só abre, não altera |
+| Criar ficheiro (`write_file`) | **Sim** | Conteúdo completo |
+| Edição cirúrgica (`patch_file`) | **Sim** | Altera apenas o que muda |
+| Substituição total (`edit_file`) | **Sim** | Avisa se o conteúdo parece parcial |
+| Apagar ficheiro | **Sim** | Irreversível |
+
+### Edição cirúrgica com `patch_file`
+
+O `patch_file` é a forma segura de fazer alterações parciais. Em vez de substituir o ficheiro inteiro, o agente indica exactamente o texto a encontrar e o texto de substituição:
+
+```
+SEARCH:
+const timeout = 30000;
+REPLACE:
+const timeout = 60000;
+```
+
+Se o texto a substituir não for encontrado no ficheiro, a operação falha com erro descritivo — o ficheiro não é alterado. Podem ser aplicados vários patches ao mesmo ficheiro numa única operação.
+
+### Protecção anti-trecho no `edit_file`
+
+Quando o agente usa `edit_file` mas o novo conteúdo é significativamente menor que o ficheiro original, o diálogo de confirmação mostra um aviso:
+
+> ⚠️ O novo conteúdo (X bytes) é muito menor que o ficheiro original (Y bytes). Isso pode substituir o ficheiro inteiro por um trecho. Usa patch_file para edições cirúrgicas.
+
+Pode cancelar e pedir ao agente para usar `patch_file` em vez disso.
+
+### Abrir ficheiro no editor
+
+O agente pode abrir um ficheiro no editor VS Code sem alterar nada (`open_file`). Útil quando quer ver o ficheiro directamente em vez de ler o conteúdo no chat.
 
 ### Fluxo de uma operação de escrita
 
-1. O agente emite a tag `[TOOL:write_file:caminho]` ou `[TOOL:edit_file:caminho]`
-2. O chat mostra a notificação imediatamente (`✏️ A editar → src/api.js`)
+1. O agente emite a tag (`write_file`, `patch_file` ou `edit_file`)
+2. O chat mostra a notificação imediatamente (`🩹 A aplicar patch → src/api.js`)
 3. Diálogo modal: **Permitir** ou **Cancelar**
 4. Se **Permitir**: a operação executa e o ficheiro abre no editor
 5. Se **Cancelar**: o agente é informado e pode continuar
@@ -236,16 +265,38 @@ O agente pode interagir com ficheiros do projecto de forma autónoma.
 Todas as operações são registadas em `.tis-log.md` na raiz do workspace:
 
 ```
-✅ [2026-04-05 10:12:01] get_file: src/api.js → lido com sucesso
-✅ [2026-04-05 10:12:45] edit_file: src/api.js → Ficheiro editado com sucesso
-❌ [2026-04-05 10:13:10] write_file: src/test.js → Operação cancelada pelo utilizador
+✅ [2026-04-08 10:12:01] get_file: src/api.js → lido com sucesso
+✅ [2026-04-08 10:12:45] patch_file: src/api.js → 2 patch(es) aplicados
+❌ [2026-04-08 10:13:10] write_file: src/test.js → Operação cancelada pelo utilizador
 ```
 
 > Recomendação: adicione `.tis-log.md` ao `.gitignore`.
 
 ---
 
-## 11. Ressincronização de sessão
+## 11. Guardião de actividade real
+
+O Guardião TIS monitoriza se o agente está efectivamente a executar acções ou apenas a responder verbalmente sem trabalho real.
+
+### Como funciona
+
+Após duas respostas consecutivas do agente **sem nenhuma ferramenta executada**, aparece no chat:
+
+> ⚠️ **Guardião TIS**: O assistente respondeu várias vezes sem executar nenhuma acção real. Se estiver a dizer que está a trabalhar sem usar ferramentas, use 🔄 Log Ressinc para retomar, ou cancele e reenvie o pedido.
+
+### O que fazer ao ver o aviso
+
+| Situação | Acção recomendada |
+|---|---|
+| O agente está em stall (a repetir "estou a trabalhar") | Clique **Parar** → reenvie o pedido com mais detalhe |
+| O agente fez perguntas legítimas sem acções | Responda — o contador reset quando usar ferramentas |
+| A conversa parece perdida | Clique **🔄 Log Ressinc** para reinjectar o contexto |
+
+O contador é resetado automaticamente sempre que o agente executa uma ferramenta real, e ao clicar **Limpar**.
+
+---
+
+## 12. Ressincronização de sessão
 
 Quando ocorre perda de sincronia (ligação interrompida, timeout durante tool calls):
 
@@ -263,7 +314,7 @@ Quando ocorre perda de sincronia (ligação interrompida, timeout durante tool c
 
 ---
 
-## 12. Sessões persistentes e histórico
+## 13. Sessões persistentes e histórico
 
 A conversa é guardada automaticamente por workspace. Ao reabrir o VS Code, o histórico e o modelo são restaurados.
 
@@ -277,7 +328,7 @@ Clique em **Histórico** na toolbar para ver as sessões do workspace actual.
 
 ---
 
-## 13. Atalhos e menu de contexto
+## 14. Atalhos e menu de contexto
 
 ### Menu de contexto no editor
 
@@ -289,7 +340,7 @@ Clique direito em qualquer ficheiro ou selecção → **Tis: Chat com Código Ac
 
 ---
 
-## 14. Resolução de problemas
+## 15. Resolução de problemas
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
@@ -301,6 +352,9 @@ Clique direito em qualquer ficheiro ou selecção → **Tis: Chat com Código Ac
 | 🔍 Hypercoding não responde | Nenhum ficheiro activo | Abra um ficheiro no editor antes de auditar |
 | Resposta parou a meio | Timeout ou erro de rede | Clique **Parar** e tente novamente |
 | Aviso ⚠️ de dessincronia | Stream interrompido durante tool calls | Clique **🔄 Log Ressinc** |
+| Aviso ⚠️ Guardião TIS | Agente sem acções reais por 2+ respostas | Cancele e reenvie, ou use **🔄 Log Ressinc** |
+| `patch_file` falha com "SEARCH não encontrado" | Texto SEARCH difere do ficheiro actual | Peça ao agente para reler o ficheiro e corrigir o patch |
+| `edit_file` substituiu ficheiro por trecho | Conteúdo parcial foi aceite no diálogo | Restaure pelo git; use `patch_file` para edições parciais |
 | UI bloqueada sem resposta (raro) | Dessincronia não detectada | Watchdog de 45s desbloqueará; use **🔄 Log Ressinc** depois |
 | `.tis-log.md` não é criado | Sem workspace aberto | Abra uma pasta no VS Code |
 | Painel não aparece | Vista oculta | `View → Open View… → Chat Tis.ai` |

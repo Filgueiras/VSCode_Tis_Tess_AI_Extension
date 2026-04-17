@@ -2,7 +2,7 @@
   "name": "tis-code",
   "displayName": "TIS.ai",
   "description": "Assistente Hypercoding para VS Code — powered by TIS, com suporte a TIS, Tess.im, Ollama e OpenAI Std",
-  "version": "5.2.0",
+  "version": "5.3.0",
   "publisher": "tis-angola",
   "author": {
     "name": "Marco A. F. Guimarães",

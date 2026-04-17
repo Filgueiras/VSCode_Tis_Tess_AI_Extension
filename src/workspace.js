@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const EXCLUDE_PATTERN = '{**/node_modules/**,**/.git/**,**/.claude/**,**/*.vsix,**/out/**,**/dist/**,**/.vscode/**,**/coverage/**,**/__pycache__/**}';
 const MAX_FILES       = 300;
-const MAX_FILE_CHARS  = 50000;
+const MAX_FILE_CHARS  = 100000;
 const MAX_GREP_RESULTS = 50;
 
 // ─── Árvore do workspace ───────────────────────────────────────────────────────

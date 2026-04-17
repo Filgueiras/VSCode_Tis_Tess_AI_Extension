@@ -15730,7 +15730,7 @@ var require_workspace = __commonJS({
     var path = require("node:path");
     var EXCLUDE_PATTERN = "{**/node_modules/**,**/.git/**,**/.claude/**,**/*.vsix,**/out/**,**/dist/**,**/.vscode/**,**/coverage/**,**/__pycache__/**}";
     var MAX_FILES = 300;
-    var MAX_FILE_CHARS = 5e4;
+    var MAX_FILE_CHARS = 1e5;
     var MAX_GREP_RESULTS = 50;
     async function getWorkspaceTree() {
       const folders = vscode2.workspace.workspaceFolders;
@@ -16137,6 +16137,31 @@ ${content}
 
 ${formatted}`;
     }
+    async function _toolOpenFile(toolName, args) {
+      if (!args) return "Erro: open_file requer o caminho do ficheiro.";
+      const filePath = args.trim();
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders) return "Erro: sem workspace aberto.";
+      const uri = vscode2.Uri.joinPath(folders[0].uri, filePath);
+      try {
+        await vscode2.workspace.fs.stat(uri);
+      } catch {
+        const result = `Erro: ficheiro n\xE3o encontrado: ${filePath}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      }
+      try {
+        const doc = await vscode2.workspace.openTextDocument(uri);
+        await vscode2.window.showTextDocument(doc, { preview: true, preserveFocus: false });
+        const result = `Ficheiro aberto no editor: ${filePath}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      } catch (err) {
+        const result = `Erro ao abrir ficheiro: ${err.message}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      }
+    }
     async function _toolWriteFile(toolName, args, content) {
       if (!args) return `Erro: ${toolName} requer o caminho do ficheiro.`;
       if (!content) return `Erro: ${toolName} n\xE3o recebeu conte\xFAdo \u2014 escreve o bloco de c\xF3digo antes da tag.`;
@@ -16145,14 +16170,27 @@ ${formatted}`;
       if (!folders) return "Erro: sem workspace aberto.";
       const uri = vscode2.Uri.joinPath(folders[0].uri, filePath);
       let fileExists = false;
+      let originalSize = 0;
       try {
-        await vscode2.workspace.fs.stat(uri);
+        const raw = await vscode2.workspace.fs.readFile(uri);
+        originalSize = raw.length;
         fileExists = true;
       } catch {
       }
       const action = fileExists ? "editar" : "criar";
+      let warningDetail = "";
+      if (toolName === "edit_file" && fileExists && originalSize > 0) {
+        const newSize = new TextEncoder().encode(content).length;
+        const ratio = newSize / originalSize;
+        if (ratio < 0.6 && originalSize > 500) {
+          warningDetail = `
+\u26A0\uFE0F O novo conte\xFAdo (${newSize} bytes) \xE9 muito menor que o ficheiro original (${originalSize} bytes).
+Isso pode substituir o ficheiro inteiro por um trecho.
+Usa patch_file para edi\xE7\xF5es cir\xFArgicas.`;
+        }
+      }
       const confirmed = await vscode2.window.showWarningMessage(
-        `Tis quer ${action}: ${filePath}`,
+        `Tis quer ${action}: ${filePath}${warningDetail}`,
         { modal: true },
         "Permitir",
         "Cancelar"
@@ -16171,6 +16209,74 @@ ${formatted}`;
         return result;
       } catch (err) {
         const result = `Erro ao ${action} ficheiro: ${err.message}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      }
+    }
+    async function _toolPatchFile(toolName, args, content) {
+      if (!args) return "Erro: patch_file requer o caminho do ficheiro.";
+      if (!content) return "Erro: patch_file n\xE3o recebeu conte\xFAdo \u2014 escreve o bloco SEARCH/REPLACE antes da tag.";
+      const filePath = args.trim();
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders) return "Erro: sem workspace aberto.";
+      const uri = vscode2.Uri.joinPath(folders[0].uri, filePath);
+      let originalContent;
+      try {
+        const raw = await vscode2.workspace.fs.readFile(uri);
+        originalContent = new TextDecoder().decode(raw);
+      } catch {
+        const result = `Erro: ficheiro n\xE3o encontrado para patch: ${filePath}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      }
+      const patchBlocks = content.split(/^---NEXT_PATCH---$/m);
+      let patched = originalContent;
+      const applied = [];
+      const failed = [];
+      for (let i = 0; i < patchBlocks.length; i++) {
+        const block = patchBlocks[i];
+        const searchMatch = block.match(/SEARCH:\r?\n([\s\S]*?)\r?\nREPLACE:\r?\n([\s\S]*?)(?:\r?\n)?$/);
+        if (!searchMatch) {
+          failed.push(`Patch ${i + 1}: formato inv\xE1lido (esperado SEARCH:/REPLACE:)`);
+          continue;
+        }
+        const searchText = searchMatch[1];
+        const replaceText = searchMatch[2];
+        if (!patched.includes(searchText)) {
+          failed.push(`Patch ${i + 1}: texto SEARCH n\xE3o encontrado no ficheiro`);
+          continue;
+        }
+        patched = patched.replace(searchText, replaceText);
+        applied.push(`Patch ${i + 1}: aplicado`);
+      }
+      if (applied.length === 0) {
+        const result = `Nenhum patch aplicado em ${filePath}:
+${failed.join("\n")}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      }
+      const confirmed = await vscode2.window.showWarningMessage(
+        `Tis quer aplicar ${applied.length} patch(es) em: ${filePath}`,
+        { modal: true },
+        "Permitir",
+        "Cancelar"
+      );
+      if (confirmed !== "Permitir") {
+        const result = `Opera\xE7\xE3o cancelada pelo utilizador: ${filePath}`;
+        await appendToActionLog(toolName, filePath, result);
+        return result;
+      }
+      try {
+        await vscode2.workspace.fs.writeFile(uri, new TextEncoder().encode(patched));
+        const doc = await vscode2.workspace.openTextDocument(uri);
+        await vscode2.window.showTextDocument(doc, { preview: true, preserveFocus: true });
+        const summary = [...applied, ...failed].join("\n");
+        const result = `patch_file conclu\xEDdo em ${filePath}:
+${summary}`;
+        await appendToActionLog(toolName, filePath, `${applied.length} patch(es) aplicados`);
+        return result;
+      } catch (err) {
+        const result = `Erro ao escrever ficheiro ap\xF3s patch: ${err.message}`;
         await appendToActionLog(toolName, filePath, result);
         return result;
       }
@@ -16270,8 +16376,10 @@ ${args.trim()}
       get_tree: (n, a) => _toolGetTree(n, a),
       get_file: (n, a) => _toolGetFile(n, a),
       grep_file: (n, a) => _toolGrepFile(n, a),
+      open_file: (n, a) => _toolOpenFile(n, a),
       write_file: (n, a, c) => _toolWriteFile(n, a, c),
       edit_file: (n, a, c) => _toolWriteFile(n, a, c),
+      patch_file: (n, a, c) => _toolPatchFile(n, a, c),
       delete_file: (n, a) => _toolDeleteFile(n, a),
       list_dir: (n, a) => _toolListDir(n, a),
       get_tasks: (n) => _toolGetTasks(n),
@@ -16346,13 +16454,15 @@ As ferramentas s\xE3o activadas por tags na resposta. As tags s\xE3o removidas d
 | Tag | Descri\xE7\xE3o |
 |-----|-----------|
 | \`[TOOL:get_tree]\` | Estrutura completa do projecto |
-| \`[TOOL:get_file:caminho]\` | Ler ficheiro completo |
-| \`[TOOL:get_file:caminho:inicio:fim]\` | Ler range de linhas (1-based, inclusive) |
+| \`[TOOL:get_file:caminho]\` | Ler ficheiro completo (trunca se >100K chars) |
+| \`[TOOL:get_file:caminho:inicio:fim]\` | Ler range de linhas (1-based, inclusive) \u2014 usar para ficheiros grandes |
 | \`[TOOL:grep_file:padr\xE3o]\` | Pesquisar texto em todo o projecto |
 | \`[TOOL:grep_file:padr\xE3o:caminho]\` | Pesquisar texto num ficheiro ou pasta |
 | \`[TOOL:list_dir:caminho]\` | Listar directoria |
-| \`[TOOL:write_file:caminho]\` | Criar ficheiro (bloco de c\xF3digo imediatamente antes) |
-| \`[TOOL:edit_file:caminho]\` | Editar ficheiro (bloco de c\xF3digo imediatamente antes) |
+| \`[TOOL:open_file:caminho]\` | Abrir ficheiro no editor (sem editar) |
+| \`[TOOL:write_file:caminho]\` | Criar ficheiro novo (bloco de c\xF3digo completo antes da tag) |
+| \`[TOOL:patch_file:caminho]\` | **Edi\xE7\xE3o cir\xFArgica** (bloco SEARCH/REPLACE antes da tag) \u2014 preferir sempre sobre edit_file |
+| \`[TOOL:edit_file:caminho]\` | Substituir ficheiro completo (s\xF3 usar com conte\xFAdo total do ficheiro) |
 | \`[TOOL:delete_file:caminho]\` | Apagar ficheiro (pede confirma\xE7\xE3o modal) |
 
 ## Lista de tarefas (persiste em .tis-tasks.md no workspace)
@@ -16364,9 +16474,65 @@ As ferramentas s\xE3o activadas por tags na resposta. As tags s\xE3o removidas d
 | \`[TOOL:done_task:descri\xE7\xE3o]\` | Marcar tarefa como conclu\xEDda |
 
 ## Pesquisa eficiente em ficheiros grandes
-Quando um ficheiro \xE9 truncado (>50K chars), usa esta estrat\xE9gia:
+Quando um ficheiro \xE9 truncado (>100K chars), usa esta estrat\xE9gia:
 1. grep_file com o padr\xE3o e caminho para localizar a zona de interesse
-2. get_file com caminho, linha inicial e linha final para ler apenas as linhas relevantes
+2. get_file com caminho, linha inicial e linha final para ler apenas as linhas relevantes (ex: linhas 1-300, depois 301-600, etc.)
+
+Nunca l\xEAs um ficheiro truncado e tentas inferir o conte\xFAdo que n\xE3o viste \u2014 sempre usa get_file com range para ler os blocos que precisas.
+
+## Edi\xE7\xE3o cir\xFArgica de ficheiros \u2014 REGRA OBRIGAT\xD3RIA
+
+**Nunca uses \`edit_file\` para substituir um ficheiro inteiro por um trecho de c\xF3digo.**
+
+- \`write_file\` \u2014 para criar ficheiros novos ou reescritas totais intencionais (ficheiro novo do zero)
+- \`edit_file\` \u2014 apenas quando forneces o ficheiro COMPLETO e tens a certeza absoluta do conte\xFAdo total
+- \`patch_file\` \u2014 **OBRIGAT\xD3RIO para qualquer altera\xE7\xE3o parcial** (corrigir uma fun\xE7\xE3o, mudar uma vari\xE1vel, adicionar um m\xE9todo, etc.)
+
+### Formato do patch_file
+
+O bloco de c\xF3digo antes da tag deve ter o formato:
+\`\`\`
+SEARCH:
+<texto exacto que existe no ficheiro, incluindo indenta\xE7\xE3o>
+REPLACE:
+<novo texto que substitui o anterior>
+\`\`\`
+
+Para m\xFAltiplas altera\xE7\xF5es independentes no mesmo ficheiro, separa com \`---NEXT_PATCH---\`:
+\`\`\`
+SEARCH:
+primeira fun\xE7\xE3o antiga
+REPLACE:
+primeira fun\xE7\xE3o nova
+---NEXT_PATCH---
+SEARCH:
+segunda coisa a mudar
+REPLACE:
+segunda coisa nova
+\`\`\`
+[TOOL:patch_file:caminho/do/ficheiro]
+
+O texto SEARCH deve ser copiado **exactamente** do ficheiro (usa get_file para confirmar antes de patchear).
+
+## Abre ficheiros sem editar
+| Tag | Descri\xE7\xE3o |
+|-----|-----------|
+| \`[TOOL:open_file:caminho]\` | Abre ficheiro no editor (s\xF3 leitura, sem altera\xE7\xF5es) |
+
+Usa open_file quando o utilizador pedir para ver um ficheiro, sem qualquer inten\xE7\xE3o de edi\xE7\xE3o.
+
+## Regras de comunica\xE7\xE3o \u2014 sem repeti\xE7\xF5es
+
+- **N\xE3o repitas perguntas ou pedidos de confirma\xE7\xE3o** que o utilizador j\xE1 respondeu nesta conversa.
+- Se o utilizador confirmou uma informa\xE7\xE3o (ex: "sim, esse \xE9 o caminho correcto"), age com base nessa confirma\xE7\xE3o \u2014 n\xE3o perguntes de novo.
+- Se j\xE1 tens a informa\xE7\xE3o necess\xE1ria no contexto (ficheiro activo, \xE1rvore do projecto, resultados de ferramentas anteriores), usa-a directamente.
+- Nunca digas "estou a trabalhar nisso" sem imediatamente emitir uma tag de ferramenta. Ou ages, ou explicas o que precisas \u2014 mas n\xE3o anuncias trabalho sem o fazer.
+
+## Protocolo de trabalho verific\xE1vel
+
+Cada vez que fazes uma ac\xE7\xE3o (ler, escrever, pesquisar), emite a tag correspondente.
+O utilizador tem um sistema de log que regista cada ac\xE7\xE3o com timestamp.
+Nunca descreves uma ac\xE7\xE3o como feita sem teres emitido a tag que a executa.
 
 Usa a lista de tarefas em trabalho multi-passo: cria-a no in\xEDcio, actualiza ao longo do processo.
 Ao retomar trabalho, come\xE7a por get_tasks para ver o estado actual.

@@ -37,3 +37,5 @@ Um ADR documenta uma decisão técnica significativa: o contexto que a motivou, 
 | [ADR-027](ADR-027-provider-registry-openai-compat.md) | Registry de providers e cliente OpenAI-compat genérico | Aceite |
 | [ADR-028](ADR-028-hypercoding-auditoria-activa.md) | Auditoria Hypercoding activa | Aceite |
 | [ADR-029](ADR-029-grep-delete-range.md) | grep_file, delete_file e get_file com range | Aceite |
+| [ADR-030](ADR-030-edicao-cirurgica-patch-file.md) | Edição cirúrgica: patch_file, open_file e protecção anti-trecho | Aceite |
+| [ADR-031](ADR-031-guardiao-actividade-real.md) | Guardião de actividade real e regras de comunicação | Aceite |

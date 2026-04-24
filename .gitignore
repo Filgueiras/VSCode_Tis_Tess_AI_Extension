@@ -18,3 +18,5 @@ Thumbs.db
 
 # Logs
 *.log
+.tis-log.md
+.tis-taks.md
